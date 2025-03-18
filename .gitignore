@@ -1,0 +1,32 @@
+# build artifacts
+/target/
+/*/target/
+
+# data generated during runtime
+data.tar
+data/
+crack-core/data/
+/logs/
+scratch
+
+# replit
+.cargo/git/
+.cargo/registry/
+.cargo/
+
+# configuration / secrets
+Secrets.toml
+.env
+.env.old
+.env.fish
+cracktunes.env
+cracktunes.toml
+dotenv
+dist-manifest.json
+
+# IDE config
+#.vscode/
+
+# code coverage
+cobertura.xml
+**/*.profraw
