@@ -13,7 +13,7 @@ use tokio::sync::Mutex;
 pub struct CrackTrackQueue {
     //inner: Arc<DashMap<GuildId, VecDeque<ResolvedTrack>>>,
     inner: Arc<Mutex<VecDeque<ResolvedTrack>>>,
-    display: Option<String>,
+    pub(crate) display: Option<String>,
 }
 
 /// Implement [`Default`] for [`CrackTrackQueue`].

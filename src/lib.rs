@@ -2,6 +2,12 @@ pub mod queue;
 pub use queue::*;
 pub mod resolve;
 pub use resolve::*;
+pub mod event_handlers;
+pub use event_handlers::*;
+
+
+#[cfg(test)]
+pub mod test;
 
 //------------------------------------
 // crack_types imports
@@ -18,6 +24,7 @@ use clap::{Parser, Subcommand};
 use dashmap::DashMap;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
+use reqwest::Client as HttpClient;
 use rusty_ytdl::search::{
     Playlist as RustyYTPlaylist, PlaylistSearchOptions as RustyYTPlaylistSearchOptions,
 };
@@ -90,6 +97,47 @@ pub fn build_configured_reqwest_client() -> reqwest::Client {
         .cookie_store(true)
         .build()
         .unwrap_or_else(|_| panic!("{NEW_FAILED} {REQ_CLIENT_STR}"))
+}
+
+///
+/// The data structure that will be available in all command contexts.
+///
+#[derive(Clone)]
+pub struct Data(pub DataInner);
+
+impl Drop for Data {
+    fn drop(&mut self) {
+        // // Clean up the songbird manager
+        // let songbird = self.songbird.clone();
+        // let guild_queues = self.guild_queues.clone();
+        // let http_client = self.http_client.clone();
+        // drop(songbird);
+        // drop(guild_queues);
+        // drop(http_client);
+    }
+}
+
+// Define the user data structure that will be available in all command contexts
+#[derive(Clone)]
+pub struct DataInner {
+    pub songbird: Arc<songbird::Songbird>,
+    pub http_client: HttpClient,
+    // Map of guild IDs to queues
+    pub guild_queues: dashmap::DashMap<serenity::all::GuildId, CrackTrackQueue>,
+}
+
+impl std::ops::Deref for Data {
+    type Target = DataInner;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for Data {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
 }
 
 /// Client for resolving tracks, mostly holds other clients like reqwest and `rusty_ytdl`.
@@ -197,18 +245,18 @@ impl<'a> CrackTrackClient {
         match query {
             QueryType::VideoLink(_) | QueryType::Keywords(_) => {
                 self.resolve_track_many(vec![query]).await
-            },
+            }
             QueryType::PlaylistLink(_) => {
                 self.resolve_playlist(&query.build_query().unwrap_or_default())
                     .await
-            },
+            }
             QueryType::KeywordList(keywords_list) => {
                 let queries = keywords_list
                     .iter()
                     .map(|x| QueryType::Keywords(x.clone()))
                     .collect::<Vec<QueryType>>();
                 self.resolve_track_many(queries).await
-            },
+            }
             QueryType::NewYoutubeDl(boxed_src_metadata) => {
                 let req_options = RequestOptions {
                     client: Some(self.req_client.clone()),
@@ -229,7 +277,7 @@ impl<'a> CrackTrackClient {
                     .with_details(info.video_details)
                     .with_metadata(opts.clone())
                     .with_video(video)])
-            },
+            }
             QueryType::SpotifyTracks(tracks) => {
                 let queries = tracks
                     .iter()
@@ -237,11 +285,11 @@ impl<'a> CrackTrackClient {
                     .collect::<Vec<QueryType>>();
 
                 self.resolve_track_many(queries).await
-            },
+            }
             _ => {
                 error!("Query type not implemented: {query:?}");
                 Err(TrackResolveError::UnknownQueryType.into())
-            },
+            }
         }
     }
 
@@ -276,12 +324,12 @@ impl<'a> CrackTrackClient {
                 let video_url = video.url.clone();
                 tracing::info!("Resolved: {video_url}");
                 self.resolve_url(&video_url).await
-            },
+            }
             _ => {
                 #[cfg(feature = "crack-tracing")]
                 error!("Query type not implemented: {query:?}");
                 Err(TrackResolveError::UnknownQueryType.into())
-            },
+            }
         }
     }
 
@@ -340,10 +388,7 @@ impl<'a> CrackTrackClient {
     /// Resolve a search query and return a queue of tracks.
     /// # Errors
     /// Returns an error if the search fails.
-    pub async fn resolve_search_faster(
-        &self,
-        query: &str,
-    ) -> Result<Vec<ResolvedTrack>, Error> {
+    pub async fn resolve_search_faster(&self, query: &str) -> Result<Vec<ResolvedTrack>, Error> {
         let search_options = rusty_ytdl::search::SearchOptions {
             limit: 5,
             ..Default::default()
@@ -408,10 +453,7 @@ impl<'a> CrackTrackClient {
     /// Resolve a playlist from a URL. Limit is set to 50 by default.
     /// # Errors
     /// Returns an [`Error`] if the playlist cannot be resolved.
-    pub async fn resolve_playlist<'b>(
-        &self,
-        url: &'b str,
-    ) -> Result<Vec<ResolvedTrack>, Error> {
+    pub async fn resolve_playlist<'b>(&self, url: &'b str) -> Result<Vec<ResolvedTrack>, Error> {
         self.resolve_playlist_limit(url, DEFAULT_PLAYLIST_LIMIT)
             .await
     }
@@ -606,7 +648,7 @@ async fn match_cli(cli: Cli) -> Result<String, Error> {
         Commands::Suggest { query } => {
             let res = suggestion(&query).await?;
             tracing::info!("Suggestions: {res:?}");
-        },
+        }
         // Commands::Ipqs { ip } => {
         //     let res = osint_client.check_ip(&ip, None).await?;
         //     tracing::info!("{res:?}");
@@ -616,15 +658,15 @@ async fn match_cli(cli: Cli) -> Result<String, Error> {
             let tracks = match yt_url_type(&url) {
                 QueryType::VideoLink(url) => {
                     vec![client.resolve_track(QueryType::VideoLink(url)).await?]
-                },
+                }
                 QueryType::PlaylistLink(url) => {
                     let url = url.clone();
                     client.resolve_playlist(url.as_str()).await?
-                },
+                }
                 _ => {
                     tracing::error!("Unknown URL type: {url}");
                     Vec::new()
-                },
+                }
             };
             for track in &tracks {
                 println!("{track}");
@@ -633,7 +675,7 @@ async fn match_cli(cli: Cli) -> Result<String, Error> {
             client.build_display(guild).await?;
             let disp = client.get_display(guild);
             println!("{disp}");
-        },
+        }
         Commands::Query { query } => {
             let queries = query.split(',');
             for query in queries {
@@ -641,10 +683,17 @@ async fn match_cli(cli: Cli) -> Result<String, Error> {
                 println!("Resolved: {res}");
                 let () = client.enqueue_track(guild, res).await;
             }
-        },
+        }
     }
 
     Ok(cli_str)
+}
+
+/// Checks that a message successfully sent; if not, then logs why to stdout.
+pub fn check_msg(result: serenity::Result<serenity::all::Message>) {
+    if let Err(why) = result {
+        println!("Error sending message: {:?}", why);
+    }
 }
 
 /// Run the CLI.
@@ -706,7 +755,7 @@ mod tests {
             "https://www.youtube.com/watch?v=X9ukSm5gmKk".to_string(),
         ));
         assert_eq!(track.metadata, None);
-        assert_eq!(track.video, None);
+        assert_ne!(track.video, None);
     }
 
     #[tokio::test]

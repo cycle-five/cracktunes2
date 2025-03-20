@@ -66,3 +66,6 @@ version = "0.5.0"
 features = [
   "driver", "gateway", "serenity", "rustls", "receive"
 ]
+
+[dev-dependencies]
+mockall = "0.13.1"

@@ -58,8 +58,13 @@ impl ResolvedTrack {
     /// Create a new `ResolvedTrack`
     #[must_use]
     pub fn new(query: QueryType) -> Self {
+        let video = match query {
+            QueryType::VideoLink(ref url) => rusty_ytdl::Video::new(url).ok(),
+            _ => None,
+        };
         ResolvedTrack {
             query,
+            video,
             user_id: UserId::new(1),
             ..Default::default()
         }
@@ -139,6 +144,11 @@ impl ResolvedTrack {
             metadata.source_url.clone().unwrap_or_default()
         } else if let Some(details) = &self.details {
             details.video_url.clone()
+        } else if let Some(video) = &self.video {
+            video.get_video_url()
+        } else if let QueryType::VideoLink(url) = &self.query {
+            // Fall back to the URL in the query if no other source is available
+            url.clone()
         } else {
             return UNKNOWN_URL.to_string();
         };

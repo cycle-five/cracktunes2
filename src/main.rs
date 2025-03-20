@@ -4,40 +4,27 @@
 //! Requires the "cache", "voice", and "poise" features be enabled in your
 //! Cargo.toml.
 use std::{
-    env,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
-    time::Duration,
+    env, sync::{
+        atomic::AtomicBool, Arc
+    }, time::Duration
 };
 
 use reqwest::Client as HttpClient;
-
 use poise::serenity_prelude as serenity;
 use serenity::{
     async_trait,
     http::Http,
     model::{gateway::Ready, prelude::ChannelId},
     prelude::{GatewayIntents, Mentionable},
-    Result as SerenityResult,
 };
+
+use cracktunes::{event_handlers::{ChannelDurationNotifier, EnhancedTrackErrorNotifier, SongEndNotifier, SongFader}, EnhancedTrackEndNotifier};
 
 use songbird::{
-    input::YoutubeDl, Event, EventContext, EventHandler as VoiceEventHandler, TrackEvent,
+    input::YoutubeDl, Call, Event, EventContext, EventHandler as VoiceEventHandler, TrackEvent
 };
-
-use cracktunes::{CrackTrackQueue, ResolvedTrack};
+use cracktunes::{check_msg, CrackTrackQueue, Data, DataInner, ResolvedTrack};
 use crack_types::QueryType;
-
-// Define the user data structure that will be available in all command contexts
-struct Data {
-    songbird: Arc<songbird::Songbird>,
-    http_client: HttpClient,
-    // Map of guild IDs to queues
-    guild_queues: dashmap::DashMap<serenity::GuildId, CrackTrackQueue>,
-}
-
 // Define the context type for poise
 type Context<'a> = poise::Context<'a, Data, serenity::Error>;
 
@@ -61,6 +48,70 @@ async fn get_queue(ctx: Context<'_>) -> Result<CrackTrackQueue, String> {
 
     Ok(queues.get(&guild_id).unwrap().clone())
 }
+
+// Add this to improve the play_next_from_queue function to handle track failures
+async fn play_next_from_queue(
+    ctx: Context<'_>,
+    queue: CrackTrackQueue,
+    mut handler: Call,
+) -> Result<(), serenity::Error> {
+    // Get the next track from our custom queue
+    if let Some(track) = queue.dequeue().await {
+        // Try to play it with songbird
+        // let src = match YoutubeDl::new(ctx.data().http_client.clone(), track.get_url()).into_input() {
+        //     Ok(input) => input,
+        //     Err(e) => {
+        //         // Failed to create input for this track
+        //         ctx.say(format!("Error playing track \"{}\": {}", track.get_title(), e)).await?;
+                
+        //         // Try the next track
+        //         return play_next_from_queue(ctx, queue, handler).await;
+        //     }
+        // };
+        let data = Arc::new(ctx.data().clone());
+        let src = YoutubeDl::new(ctx.data().http_client.clone(), track.get_url());
+        
+        let song = handler.play_input(src.into());
+        
+        // Add the track end event to handle auto-playing the next song
+        let chan_id = ctx.channel_id();
+        let http = ctx.serenity_context().http.clone();
+        
+        let _ = song.add_event(
+            Event::Track(TrackEvent::End),
+            EnhancedTrackEndNotifier {
+                chan_id,
+                http: http.clone(),
+                guild_id: ctx.guild_id().unwrap(),
+                data: Arc::new(ctx.data().clone()),
+                is_looping: Arc::new(AtomicBool::new(false)),
+            },
+        );
+        
+        // Also add an error handler to skip to next track on failure
+        let _ = song.add_event(
+            Event::Track(TrackEvent::Error),
+            EnhancedTrackErrorNotifier {
+                chan_id,
+                http: http.clone(),
+                guild_id: ctx.guild_id().unwrap(),
+                data: Arc::new(ctx.data().clone()),
+                is_looping: Arc::new(AtomicBool::new(false)),
+            },
+        );
+        
+        // Notify that the track is playing
+        check_msg(
+            chan_id
+                .say(http.clone(), &format!("Now playing: {}", track.get_title()))
+                .await,
+        );
+    }
+    
+    Ok(())
+}
+
+
 
 /// Joins the voice channel of the user
 #[poise::command(slash_command, prefix_command, guild_only)]
@@ -90,14 +141,6 @@ async fn join(ctx: Context<'_>) -> Result<(), serenity::Error> {
         let send_http = ctx.serenity_context().http.clone();
 
         let mut handle = handle_lock.lock().await;
-
-        handle.add_global_event(
-            Event::Track(TrackEvent::End),
-            TrackEndNotifier {
-                chan_id,
-                http: send_http.clone(),
-            },
-        );
 
         handle.add_global_event(
             Event::Periodic(Duration::from_secs(60), None),
@@ -207,7 +250,7 @@ async fn queue(
     })?;
 
     if let Some(handler_lock) = data.songbird.get(guild_id) {
-        let _handler = handler_lock.lock().await;
+        let handler = handler_lock.lock().await;
 
         // Create a resolved track from the URL
         let query = QueryType::VideoLink(url);
@@ -216,9 +259,12 @@ async fn queue(
         // Add to our custom queue
         queue.enqueue(track.clone()).await;
 
-        // Also add to songbird's queue for playback
-        //let src = YoutubeDl::new(data.http_client.clone(), track.get_url());
-        //handler.enqueue_input(src.into()).await;
+        // Check if we need to start playing (if this is the first track)
+        let queue_len = queue.len().await;
+        if queue_len == 1 {
+            // This is the first track, so start playing
+            play_next_from_queue(ctx, queue.clone(), handler.clone()).await?;
+        }
 
         // Build the display for the queue
         let mut queue_clone = queue.clone();
@@ -227,9 +273,8 @@ async fn queue(
             .await
             .map_err(|_| serenity::Error::Other("Failed to build queue display"))?;
 
-        let len = queue.len().await;
         ctx.say(format!(
-            "Added song to queue: position {len:?}",
+            "Added song to queue: position {queue_len}",
         ))
         .await?;
     } else {
@@ -245,11 +290,11 @@ async fn skip(ctx: Context<'_>) -> Result<(), serenity::Error> {
     let guild_id = ctx.guild_id().unwrap();
     let manager = ctx.data().songbird.clone();
 
-    if let Some(_handler_lock) = manager.get(guild_id) {
-        // let handler = handler_lock.lock().await;
-        // handler.
-        //let queue = handler.queue();
-        // let _ = queue.skip();
+    if let Some(handler_lock) = manager.get(guild_id) {
+        let mut handler = handler_lock.lock().await;
+        
+        // Skip the current song in songbird's queue
+        handler.stop();
 
         // Also dequeue from our custom queue
         let custom_queue = get_queue(ctx).await.map_err(|e| {
@@ -259,8 +304,12 @@ async fn skip(ctx: Context<'_>) -> Result<(), serenity::Error> {
 
         let _ = custom_queue.dequeue().await;
 
-        let len = custom_queue.len().await;
+        // Play the next song from our custom queue
+        if !custom_queue.is_empty().await {
+            play_next_from_queue(ctx, custom_queue.clone(), handler.clone()).await?;
+        }
 
+        let len = custom_queue.len().await;
         ctx.say(format!("Song skipped: {} in queue.", len))
             .await?;
     } else {
@@ -276,12 +325,13 @@ async fn stop(ctx: Context<'_>) -> Result<(), serenity::Error> {
     let guild_id = ctx.guild_id().unwrap();
     let manager = ctx.data().songbird.clone();
 
-    if let Some(_handler_lock) = manager.get(guild_id) {
-        // let handler = handler_lock.lock().await;
-        // let queue = handler.queue();
-        // queue.stop();
+    if let Some(handler_lock) = manager.get(guild_id) {
+        let mut handler = handler_lock.lock().await;
+        
+        // Stop the songbird queue
+        handler.stop();
 
-        // Also clear our custom queue
+        // Clear our custom queue
         let custom_queue = get_queue(ctx).await.map_err(|e| {
             println!("Error getting queue: {}", e);
             serenity::Error::Other("Failed to get queue")
@@ -328,29 +378,37 @@ async fn shuffle(ctx: Context<'_>) -> Result<(), serenity::Error> {
     let guild_id = ctx.guild_id().unwrap();
     let manager = ctx.data().songbird.clone();
 
-    if let Some(_handler_lock) = manager.get(guild_id) {
+    if let Some(handler_lock) = manager.get(guild_id) {
+        let mut handler = handler_lock.lock().await;
+        
         // Get our custom queue
         let custom_queue = get_queue(ctx).await.map_err(|e| {
             println!("Error getting queue: {}", e);
             serenity::Error::Other("Failed to get queue")
         })?;
 
+        // Save the current playing track if there is one
+        let current_track = if !custom_queue.is_empty().await {
+            custom_queue.dequeue().await
+        } else {
+            None
+        };
+
         // Shuffle our custom queue
         custom_queue.shuffle().await;
 
+        // If we had a current track, put it back at the front
+        if let Some(track) = current_track {
+            custom_queue.push_front(track).await;
+        }
+
         // We need to rebuild the songbird queue to match our shuffled queue
-        // let mut handler = handler_lock.lock().await;
-        // let songbird_queue = handler.queue();
-        // songbird_queue.stop();
+        handler.stop();
 
-        // Get the tracks from our custom queue
-        //let tracks = custom_queue.get_queue().await;
-
-        // Re-add all tracks to songbird queue
-        // for track in tracks {
-        //     let src = YoutubeDl::new(ctx.data().http_client.clone(), track.get_url());
-        //     handler.enqueue_input(src.into()).await;
-        // }
+        // Play the next track from our shuffled queue
+        if !custom_queue.is_empty().await {
+            play_next_from_queue(ctx, custom_queue.clone(), handler.clone()).await?;
+        }
 
         // Build the display for the queue
         let mut queue_clone = custom_queue.clone();
@@ -464,101 +522,18 @@ async fn undeafen(ctx: Context<'_>) -> Result<(), serenity::Error> {
     Ok(())
 }
 
-struct TrackEndNotifier {
-    chan_id: ChannelId,
-    http: Arc<Http>,
-}
-
-#[async_trait]
-impl VoiceEventHandler for TrackEndNotifier {
-    async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
-        if let EventContext::Track(track_list) = ctx {
-            check_msg(
-                self.chan_id
-                    .say(&self.http, &format!("Tracks ended: {}.", track_list.len()))
-                    .await,
-            );
-        }
-
-        None
-    }
-}
-
-struct ChannelDurationNotifier {
-    chan_id: ChannelId,
-    count: Arc<AtomicUsize>,
-    http: Arc<Http>,
-}
-
-#[async_trait]
-impl VoiceEventHandler for ChannelDurationNotifier {
-    async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
-        let count_before = self.count.fetch_add(1, Ordering::Relaxed);
-        check_msg(
-            self.chan_id
-                .say(
-                    &self.http,
-                    &format!(
-                        "I've been in this channel for {} minutes!",
-                        count_before + 1
-                    ),
-                )
-                .await,
-        );
-
-        None
-    }
-}
-
-struct SongFader {
-    chan_id: ChannelId,
-    http: Arc<Http>,
-}
-
-#[async_trait]
-impl VoiceEventHandler for SongFader {
-    async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
-        if let EventContext::Track(&[(state, track)]) = ctx {
-            let _ = track.set_volume(state.volume / 2.0);
-
-            if state.volume < 1e-2 {
-                let _ = track.stop();
-                check_msg(self.chan_id.say(&self.http, "Stopping song...").await);
-                Some(Event::Cancel)
-            } else {
-                check_msg(self.chan_id.say(&self.http, "Volume reduced.").await);
-                None
-            }
-        } else {
-            None
-        }
-    }
-}
-
-struct SongEndNotifier {
-    chan_id: ChannelId,
-    http: Arc<Http>,
-}
-
-#[async_trait]
-impl VoiceEventHandler for SongEndNotifier {
-    async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
-        check_msg(
-            self.chan_id
-                .say(&self.http, "Song faded out completely!")
-                .await,
-        );
-
-        None
-    }
-}
-
-/// Checks that a message successfully sent; if not, then logs why to stdout.
-fn check_msg(result: SerenityResult<serenity::Message>) {
-    if let Err(why) = result {
-        println!("Error sending message: {:?}", why);
-    }
-}
+// Don't forget to add the playlist command to your Framework's commands list:
+// Inside main():
+// commands: vec![
+//    ping(),
+//    join(),
+//    leave(),
+//    play_fade(),
+//    queue(),
+//    playlist(), // Add this
+//    skip(),
+//    ...
+// ],
 
 #[tokio::main]
 async fn main() {
@@ -599,11 +574,11 @@ async fn main() {
         .setup(|ctx, _ready, framework| {
             Box::pin(async move {
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
-                Ok(Data {
+                Ok(Data(DataInner{
                     songbird: Arc::clone(&manager_clone),
                     http_client: HttpClient::new(),
                     guild_queues: dashmap::DashMap::new(),
-                })
+                }))
             })
         })
         .build();
