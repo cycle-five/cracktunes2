@@ -13,15 +13,14 @@ use reqwest::Client as HttpClient;
 use poise::serenity_prelude as serenity;
 use serenity::{
     async_trait,
-    http::Http,
-    model::{gateway::Ready, prelude::ChannelId},
+    model::gateway::Ready,
     prelude::{GatewayIntents, Mentionable},
 };
 
 use cracktunes::{event_handlers::{ChannelDurationNotifier, EnhancedTrackErrorNotifier, SongEndNotifier, SongFader}, EnhancedTrackEndNotifier};
 
 use songbird::{
-    input::YoutubeDl, Call, Event, EventContext, EventHandler as VoiceEventHandler, TrackEvent
+    input::YoutubeDl, Call, Event, TrackEvent
 };
 use cracktunes::{check_msg, CrackTrackQueue, Data, DataInner, ResolvedTrack};
 use crack_types::QueryType;
@@ -68,7 +67,7 @@ async fn play_next_from_queue(
         //         return play_next_from_queue(ctx, queue, handler).await;
         //     }
         // };
-        let data = Arc::new(ctx.data().clone());
+        let _data = Arc::new(ctx.data().clone());
         let src = YoutubeDl::new(ctx.data().http_client.clone(), track.get_url());
         
         let song = handler.play_input(src.into());
