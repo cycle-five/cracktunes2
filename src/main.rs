@@ -72,6 +72,13 @@ async fn play_next_from_queue(
         
         let song = handler.play_input(src.into());
         
+        // Update activity timestamp in any ChannelDurationNotifier
+        for (_, event_handler) in handler.global_events.iter() {
+            if let Some(notifier) = event_handler.downcast_ref::<ChannelDurationNotifier>() {
+                notifier.update_activity();
+            }
+        }
+        
         // Add the track end event to handle auto-playing the next song
         let chan_id = ctx.channel_id();
         let http = ctx.serenity_context().http.clone();
@@ -141,13 +148,24 @@ async fn join(ctx: Context<'_>) -> Result<(), serenity::Error> {
 
         let mut handle = handle_lock.lock().await;
 
+        // Create the channel duration notifier
+        let notifier = ChannelDurationNotifier {
+            chan_id,
+            count: Default::default(),
+            http: send_http,
+            guild_id,
+            songbird: ctx.data().songbird.clone(),
+            idle_timeout: 5, // Default to 5 minutes of inactivity before leaving
+            last_activity: Arc::new(AtomicUsize::new(0)),
+        };
+        
+        // Update the last activity timestamp to the current time
+        notifier.update_activity();
+        
+        // Add the notifier as a global event
         handle.add_global_event(
             Event::Periodic(Duration::from_secs(60), None),
-            ChannelDurationNotifier {
-                chan_id,
-                count: Default::default(),
-                http: send_http,
-            },
+            notifier,
         );
     } else {
         ctx.say("Error joining the channel").await?;
@@ -197,6 +215,14 @@ async fn play_fade(
         // This handler object will allow you to, as needed,
         // control the audio track via events and further commands.
         let song = handler.play_input(src.into());
+        
+        // Update activity timestamp in any ChannelDurationNotifier
+        for (_, event_handler) in handler.global_events.iter() {
+            if let Some(notifier) = event_handler.downcast_ref::<ChannelDurationNotifier>() {
+                notifier.update_activity();
+            }
+        }
+        
         let send_http = ctx.serenity_context().http.clone();
         let chan_id = ctx.channel_id();
 
@@ -501,6 +527,69 @@ async fn deafen(ctx: Context<'_>) -> Result<(), serenity::Error> {
     Ok(())
 }
 
+/// Sets the idle timeout in minutes (0 = never leave)
+#[poise::command(slash_command, prefix_command, guild_only)]
+async fn set_idle_timeout(
+    ctx: Context<'_>,
+    #[description = "Timeout in minutes (0 = never leave)"] minutes: usize,
+) -> Result<(), serenity::Error> {
+    let guild_id = ctx.guild_id().unwrap();
+    let manager = ctx.data().songbird.clone();
+
+    if let Some(handler_lock) = manager.get(guild_id) {
+        let handler = handler_lock.lock().await;
+        
+        // Find the ChannelDurationNotifier and update its idle_timeout
+        let mut updated = false;
+        for (_, event_handler) in handler.global_events.iter() {
+            if let Some(notifier) = event_handler.downcast_ref::<ChannelDurationNotifier>() {
+                // We can't directly modify the notifier because it's behind a shared reference
+                // So we need to create a new one with the updated timeout
+                let chan_id = notifier.chan_id;
+                let count = notifier.count.clone();
+                let http = notifier.http.clone();
+                let guild_id = notifier.guild_id;
+                let songbird = notifier.songbird.clone();
+                let last_activity = notifier.last_activity.clone();
+                
+                // Remove the old event handler
+                handler.remove_global_event(event_handler.uuid());
+                
+                // Add a new one with the updated timeout
+                handler.add_global_event(
+                    Event::Periodic(Duration::from_secs(60), None),
+                    ChannelDurationNotifier {
+                        chan_id,
+                        count,
+                        http,
+                        guild_id,
+                        songbird,
+                        idle_timeout: minutes,
+                        last_activity,
+                    },
+                );
+                
+                updated = true;
+                break;
+            }
+        }
+        
+        if updated {
+            if minutes == 0 {
+                ctx.say("Idle timeout disabled. Bot will not automatically leave the channel.").await?;
+            } else {
+                ctx.say(format!("Idle timeout set to {} minutes.", minutes)).await?;
+            }
+        } else {
+            ctx.say("No channel duration notifier found. Join a voice channel first.").await?;
+        }
+    } else {
+        ctx.say("Not in a voice channel.").await?;
+    }
+
+    Ok(())
+}
+
 /// Undeafens the bot
 #[poise::command(slash_command, prefix_command, guild_only)]
 async fn undeafen(ctx: Context<'_>) -> Result<(), serenity::Error> {
@@ -521,19 +610,6 @@ async fn undeafen(ctx: Context<'_>) -> Result<(), serenity::Error> {
     Ok(())
 }
 
-// Don't forget to add the playlist command to your Framework's commands list:
-// Inside main():
-// commands: vec![
-//    ping(),
-//    join(),
-//    leave(),
-//    play_fade(),
-//    queue(),
-//    playlist(), // Add this
-//    skip(),
-//    ...
-// ],
-
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
@@ -541,7 +617,7 @@ async fn main() {
     // Configure the client with your Discord bot token in the environment.
     let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
 
-    let intents = GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT;
+    let intents = GatewayIntents::non_privileged();
 
     let manager = songbird::Songbird::serenity();
 
@@ -563,11 +639,13 @@ async fn main() {
                 unmute(),
                 deafen(),
                 undeafen(),
+                set_idle_timeout(),
             ],
-            prefix_options: poise::PrefixFrameworkOptions {
-                prefix: Some("~".into()),
-                ..Default::default()
-            },
+            // Maybe one day
+            // prefix_options: poise::PrefixFrameworkOptions {
+            //     prefix: Some("~".into()),
+            //     ..Default::default()
+            // },
             ..Default::default()
         })
         .setup(|ctx, _ready, framework| {

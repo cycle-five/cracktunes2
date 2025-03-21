@@ -33,6 +33,13 @@ impl VoiceEventHandler for EnhancedTrackEndNotifier {
                         
                         let song = handler.play_input(src);
                         
+                        // Update activity timestamp in any ChannelDurationNotifier
+                        for (_, event_handler) in handler.global_events.iter() {
+                            if let Some(notifier) = event_handler.downcast_ref::<ChannelDurationNotifier>() {
+                                notifier.update_activity();
+                            }
+                        }
+                        
                         // Add event handlers to the new track
                         let _ = song.add_event(
                             Event::Track(TrackEvent::End),
@@ -151,6 +158,13 @@ impl VoiceEventHandler for EnhancedTrackErrorNotifier {
                             
                             let song = handler.play_input(src.into());
                             
+                            // Update activity timestamp in any ChannelDurationNotifier
+                            for (_, event_handler) in handler.global_events.iter() {
+                                if let Some(notifier) = event_handler.downcast_ref::<ChannelDurationNotifier>() {
+                                    notifier.update_activity();
+                                }
+                            }
+                            
                             // Add the same event handlers to the new track
                             let _ = song.add_event(
                                 Event::Track(TrackEvent::End),
@@ -210,12 +224,50 @@ pub struct ChannelDurationNotifier {
     pub chan_id: ChannelId,
     pub count: Arc<AtomicUsize>,
     pub http: Arc<Http>,
+    pub guild_id: GuildId,
+    pub songbird: Arc<songbird::Songbird>,
+    pub idle_timeout: usize, // In minutes, 0 means never leave
+    pub last_activity: Arc<AtomicUsize>, // Timestamp of last activity in minutes
+}
+
+impl ChannelDurationNotifier {
+    /// Update the last activity timestamp to the current time
+    pub fn update_activity(&self) {
+        let current_time = self.count.load(Ordering::Relaxed);
+        self.last_activity.store(current_time, Ordering::Relaxed);
+    }
 }
 
 #[async_trait]
 impl VoiceEventHandler for ChannelDurationNotifier {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
         let count_before = self.count.fetch_add(1, Ordering::Relaxed);
+        
+        // Check if we should leave due to inactivity
+        if self.idle_timeout > 0 {
+            let current_time = count_before + 1; // Current time in minutes since joining
+            let last_activity = self.last_activity.load(Ordering::Relaxed);
+            let idle_time = current_time.saturating_sub(last_activity);
+            
+            if idle_time >= self.idle_timeout {
+                check_msg(
+                    self.chan_id
+                        .say(
+                            &self.http,
+                            &format!(
+                                "Leaving channel due to inactivity for {} minutes.",
+                                idle_time
+                            ),
+                        )
+                        .await,
+                );
+                
+                // Leave the channel
+                let _ = self.songbird.remove(self.guild_id).await;
+                return Some(Event::Cancel); // Cancel this event handler
+            }
+        }
+        
         check_msg(
             self.chan_id
                 .say(
