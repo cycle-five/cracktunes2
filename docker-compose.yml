@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  cracktunes:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cracktunes
+    restart: unless-stopped
+    environment:
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+    volumes:
+      - ./config:/app/config
