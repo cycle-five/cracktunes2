@@ -72,11 +72,11 @@ async fn play_next_from_queue(
         
         let song = handler.play_input(src.into());
         
-        // Update activity timestamp in any ChannelDurationNotifier
-        for (_, event_handler) in handler.global_events.iter() {
-            if let Some(notifier) = event_handler.downcast_ref::<ChannelDurationNotifier>() {
-                notifier.update_activity();
-            }
+        // Update activity timestamp directly
+        let guild_id = ctx.guild_id().unwrap();
+        if let Some(idle_info) = ctx.data().idle_timeouts.get(&guild_id) {
+            let current_time = idle_info.last_activity.load(std::sync::atomic::Ordering::Relaxed);
+            idle_info.last_activity.store(current_time + 1, std::sync::atomic::Ordering::Relaxed);
         }
         
         // Add the track end event to handle auto-playing the next song
@@ -148,6 +148,12 @@ async fn join(ctx: Context<'_>) -> Result<(), serenity::Error> {
 
         let mut handle = handle_lock.lock().await;
 
+        // Initialize the idle timeout info for this guild
+        let idle_info = ctx.data().idle_timeouts.entry(guild_id).or_default();
+        
+        // Initialize the last activity timestamp to the current time (0 minutes since joining)
+        idle_info.last_activity.store(0, std::sync::atomic::Ordering::Relaxed);
+        
         // Create the channel duration notifier
         let notifier = ChannelDurationNotifier {
             chan_id,
@@ -155,12 +161,8 @@ async fn join(ctx: Context<'_>) -> Result<(), serenity::Error> {
             http: send_http,
             guild_id,
             songbird: ctx.data().songbird.clone(),
-            idle_timeout: 5, // Default to 5 minutes of inactivity before leaving
-            last_activity: Arc::new(AtomicUsize::new(0)),
+            data: Arc::new(ctx.data().clone()),
         };
-        
-        // Update the last activity timestamp to the current time
-        notifier.update_activity();
         
         // Add the notifier as a global event
         handle.add_global_event(
@@ -195,7 +197,7 @@ async fn leave(ctx: Context<'_>) -> Result<(), serenity::Error> {
 
 /// Plays a song with a fade effect
 #[poise::command(slash_command, prefix_command, guild_only)]
-async fn play_fade(
+async fn play_url(
     ctx: Context<'_>,
     #[description = "URL to a video or audio"] url: String,
 ) -> Result<(), serenity::Error> {
@@ -216,11 +218,10 @@ async fn play_fade(
         // control the audio track via events and further commands.
         let song = handler.play_input(src.into());
         
-        // Update activity timestamp in any ChannelDurationNotifier
-        for (_, event_handler) in handler.global_events.iter() {
-            if let Some(notifier) = event_handler.downcast_ref::<ChannelDurationNotifier>() {
-                notifier.update_activity();
-            }
+        // Update activity timestamp directly
+        if let Some(idle_info) = ctx.data().idle_timeouts.get(&guild_id) {
+            let current_time = idle_info.last_activity.load(std::sync::atomic::Ordering::Relaxed);
+            idle_info.last_activity.store(current_time + 1, std::sync::atomic::Ordering::Relaxed);
         }
         
         let send_http = ctx.serenity_context().http.clone();
@@ -534,57 +535,17 @@ async fn set_idle_timeout(
     #[description = "Timeout in minutes (0 = never leave)"] minutes: usize,
 ) -> Result<(), serenity::Error> {
     let guild_id = ctx.guild_id().unwrap();
-    let manager = ctx.data().songbird.clone();
-
-    if let Some(handler_lock) = manager.get(guild_id) {
-        let handler = handler_lock.lock().await;
-        
-        // Find the ChannelDurationNotifier and update its idle_timeout
-        let mut updated = false;
-        for (_, event_handler) in handler.global_events.iter() {
-            if let Some(notifier) = event_handler.downcast_ref::<ChannelDurationNotifier>() {
-                // We can't directly modify the notifier because it's behind a shared reference
-                // So we need to create a new one with the updated timeout
-                let chan_id = notifier.chan_id;
-                let count = notifier.count.clone();
-                let http = notifier.http.clone();
-                let guild_id = notifier.guild_id;
-                let songbird = notifier.songbird.clone();
-                let last_activity = notifier.last_activity.clone();
-                
-                // Remove the old event handler
-                handler.remove_global_event(event_handler.uuid());
-                
-                // Add a new one with the updated timeout
-                handler.add_global_event(
-                    Event::Periodic(Duration::from_secs(60), None),
-                    ChannelDurationNotifier {
-                        chan_id,
-                        count,
-                        http,
-                        guild_id,
-                        songbird,
-                        idle_timeout: minutes,
-                        last_activity,
-                    },
-                );
-                
-                updated = true;
-                break;
-            }
-        }
-        
-        if updated {
-            if minutes == 0 {
-                ctx.say("Idle timeout disabled. Bot will not automatically leave the channel.").await?;
-            } else {
-                ctx.say(format!("Idle timeout set to {} minutes.", minutes)).await?;
-            }
-        } else {
-            ctx.say("No channel duration notifier found. Join a voice channel first.").await?;
-        }
+    
+    // Get or create the idle timeout info for this guild
+    let idle_info = ctx.data().idle_timeouts.entry(guild_id).or_default();
+    
+    // Update the timeout
+    idle_info.timeout_minutes.store(minutes, std::sync::atomic::Ordering::Relaxed);
+    
+    if minutes == 0 {
+        ctx.say("Idle timeout disabled. Bot will not automatically leave the channel.").await?;
     } else {
-        ctx.say("Not in a voice channel.").await?;
+        ctx.say(format!("Idle timeout set to {} minutes.", minutes)).await?;
     }
 
     Ok(())
@@ -629,7 +590,7 @@ async fn main() {
                 ping(),
                 join(),
                 leave(),
-                play_fade(),
+                play_url(),
                 queue(),
                 skip(),
                 stop(),
@@ -655,6 +616,7 @@ async fn main() {
                     songbird: Arc::clone(&manager_clone),
                     http_client: HttpClient::new(),
                     guild_queues: dashmap::DashMap::new(),
+                    idle_timeouts: dashmap::DashMap::new(),
                 }))
             })
         })

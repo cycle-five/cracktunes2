@@ -157,7 +157,7 @@ To set up Discord notifications:
 - `/ping`: Pings the bot
 - `/join`: Joins the voice channel
 - `/leave`: Leaves the voice channel
-- `/play_fade`: Plays a song with a fade effect
+- `/play`: Plays a song
 - `/queue`: Adds a song to the queue
 - `/skip`: Skips the current song
 - `/stop`: Stops playback and clears the queue

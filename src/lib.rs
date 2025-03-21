@@ -32,6 +32,7 @@ use rusty_ytdl::{search, search::YouTube};
 use rusty_ytdl::{RequestOptions, VideoOptions};
 use serenity::all::{AutocompleteChoice, GuildId};
 use std::borrow::Cow;
+use std::sync::atomic::AtomicUsize;
 use std::sync::LazyLock;
 #[cfg(feature = "crack-tracing")]
 use tracing::{debug, error, instrument};
@@ -117,6 +118,22 @@ impl Drop for Data {
     }
 }
 
+/// Struct to hold idle timeout information for a guild
+#[derive(Clone)]
+pub struct IdleTimeoutInfo {
+    pub timeout_minutes: Arc<AtomicUsize>, // 0 means never leave
+    pub last_activity: Arc<AtomicUsize>,   // Timestamp in minutes since joining
+}
+
+impl Default for IdleTimeoutInfo {
+    fn default() -> Self {
+        Self {
+            timeout_minutes: Arc::new(AtomicUsize::new(5)), // Default to 5 minutes
+            last_activity: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+}
+
 // Define the user data structure that will be available in all command contexts
 #[derive(Clone)]
 pub struct DataInner {
@@ -124,6 +141,8 @@ pub struct DataInner {
     pub http_client: HttpClient,
     // Map of guild IDs to queues
     pub guild_queues: dashmap::DashMap<serenity::all::GuildId, CrackTrackQueue>,
+    // Map of guild IDs to idle timeout information
+    pub idle_timeouts: dashmap::DashMap<serenity::all::GuildId, IdleTimeoutInfo>,
 }
 
 impl std::ops::Deref for Data {

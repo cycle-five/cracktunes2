@@ -33,11 +33,10 @@ impl VoiceEventHandler for EnhancedTrackEndNotifier {
                         
                         let song = handler.play_input(src);
                         
-                        // Update activity timestamp in any ChannelDurationNotifier
-                        for (_, event_handler) in handler.global_events.iter() {
-                            if let Some(notifier) = event_handler.downcast_ref::<ChannelDurationNotifier>() {
-                                notifier.update_activity();
-                            }
+                        // Update activity timestamp directly
+                        if let Some(idle_info) = self.data.idle_timeouts.get(&self.guild_id) {
+                            let current_time = idle_info.last_activity.load(std::sync::atomic::Ordering::Relaxed);
+                            idle_info.last_activity.store(current_time + 1, std::sync::atomic::Ordering::Relaxed);
                         }
                         
                         // Add event handlers to the new track
@@ -158,11 +157,10 @@ impl VoiceEventHandler for EnhancedTrackErrorNotifier {
                             
                             let song = handler.play_input(src.into());
                             
-                            // Update activity timestamp in any ChannelDurationNotifier
-                            for (_, event_handler) in handler.global_events.iter() {
-                                if let Some(notifier) = event_handler.downcast_ref::<ChannelDurationNotifier>() {
-                                    notifier.update_activity();
-                                }
+                            // Update activity timestamp directly
+                            if let Some(idle_info) = self.data.idle_timeouts.get(&self.guild_id) {
+                                let current_time = idle_info.last_activity.load(std::sync::atomic::Ordering::Relaxed);
+                                idle_info.last_activity.store(current_time + 1, std::sync::atomic::Ordering::Relaxed);
                             }
                             
                             // Add the same event handlers to the new track
@@ -226,15 +224,19 @@ pub struct ChannelDurationNotifier {
     pub http: Arc<Http>,
     pub guild_id: GuildId,
     pub songbird: Arc<songbird::Songbird>,
-    pub idle_timeout: usize, // In minutes, 0 means never leave
-    pub last_activity: Arc<AtomicUsize>, // Timestamp of last activity in minutes
+    pub data: Arc<Data>,
 }
 
 impl ChannelDurationNotifier {
     /// Update the last activity timestamp to the current time
     pub fn update_activity(&self) {
         let current_time = self.count.load(Ordering::Relaxed);
-        self.last_activity.store(current_time, Ordering::Relaxed);
+        
+        // Get or create the idle timeout info for this guild
+        let idle_info = self.data.idle_timeouts.entry(self.guild_id).or_default();
+        
+        // Update the last activity timestamp
+        idle_info.last_activity.store(current_time, Ordering::Relaxed);
     }
 }
 
@@ -242,29 +244,34 @@ impl ChannelDurationNotifier {
 impl VoiceEventHandler for ChannelDurationNotifier {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
         let count_before = self.count.fetch_add(1, Ordering::Relaxed);
+        let current_time = count_before + 1; // Current time in minutes since joining
         
-        // Check if we should leave due to inactivity
-        if self.idle_timeout > 0 {
-            let current_time = count_before + 1; // Current time in minutes since joining
-            let last_activity = self.last_activity.load(Ordering::Relaxed);
-            let idle_time = current_time.saturating_sub(last_activity);
+        // Get the idle timeout info for this guild
+        if let Some(idle_info) = self.data.idle_timeouts.get(&self.guild_id) {
+            let timeout_minutes = idle_info.timeout_minutes.load(Ordering::Relaxed);
             
-            if idle_time >= self.idle_timeout {
-                check_msg(
-                    self.chan_id
-                        .say(
-                            &self.http,
-                            &format!(
-                                "Leaving channel due to inactivity for {} minutes.",
-                                idle_time
-                            ),
-                        )
-                        .await,
-                );
+            // Check if we should leave due to inactivity (0 means never leave)
+            if timeout_minutes > 0 {
+                let last_activity = idle_info.last_activity.load(Ordering::Relaxed);
+                let idle_time = current_time.saturating_sub(last_activity);
                 
-                // Leave the channel
-                let _ = self.songbird.remove(self.guild_id).await;
-                return Some(Event::Cancel); // Cancel this event handler
+                if idle_time >= timeout_minutes {
+                    check_msg(
+                        self.chan_id
+                            .say(
+                                &self.http,
+                                &format!(
+                                    "Leaving channel due to inactivity for {} minutes.",
+                                    idle_time
+                                ),
+                            )
+                            .await,
+                    );
+                    
+                    // Leave the channel
+                    let _ = self.songbird.remove(self.guild_id).await;
+                    return Some(Event::Cancel); // Cancel this event handler
+                }
             }
         }
         
