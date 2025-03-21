@@ -26,17 +26,24 @@ fi
 if command -v apt-get &> /dev/null; then
     echo "Installing system dependencies with apt..."
     sudo apt-get update
-    sudo apt-get install -y pkg-config libopus-dev ffmpeg python3
+    sudo apt-get install -y pkg-config libopus-dev ffmpeg python3 yt-dlp
 elif command -v brew &> /dev/null; then
     echo "Installing system dependencies with Homebrew..."
-    brew install opus ffmpeg python3
+    brew install opus ffmpeg python3 yt-dlp
 elif command -v pacman &> /dev/null; then
     echo "Installing system dependencies with pacman..."
-    sudo pacman -Sy --noconfirm opus ffmpeg python
+    sudo pacman -Sy --noconfirm opus ffmpeg python yt-dlp
+elif command -v dnf &> /dev/null; then
+    echo "Installing system dependencies with dnf..."
+    sudo dnf install -y opus ffmpeg python3 yt-dlp
+elif command -v zypper &> /dev/null; then
+    echo "Installing system dependencies with zypper..."
+    sudo zypper install -y opus ffmpeg python3 yt-dlp
 else
     echo "Could not determine package manager. Please install the following dependencies manually:"
     echo "- Opus development libraries"
     echo "- FFmpeg"
+    echo "- yt-dlp"
     echo "- Python 3"
 fi
 
