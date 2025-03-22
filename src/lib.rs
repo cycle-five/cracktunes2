@@ -30,7 +30,6 @@ use rusty_ytdl::search::{
 use rusty_ytdl::{search, search::YouTube};
 use rusty_ytdl::{RequestOptions, VideoOptions};
 use serenity::all::{AutocompleteChoice, GuildId};
-use std::borrow::Cow;
 use std::sync::atomic::AtomicUsize;
 use std::sync::LazyLock;
 #[cfg(feature = "crack-tracing")]
@@ -196,7 +195,7 @@ impl Display for CrackTrackClient {
     }
 }
 
-impl<'a> CrackTrackClient {
+impl CrackTrackClient {
     /// Create a new [`CrackTrackClient`].
     #[must_use]
     pub fn new() -> Self {
@@ -460,18 +459,19 @@ impl<'a> CrackTrackClient {
         let tracks = self.resolve_search(query).await?;
         let autocomplete_choices: Vec<AutocompleteChoice> = tracks
             .iter()
-            .map(|track| Cow::Owned(track.clone()))
-            .collect::<Vec<Cow<'a, ResolvedTrack>>>()
-            .into_iter()
-            .map(|track| track.clone().autocomplete_option())
-            .collect::<Vec<AutocompleteChoice>>();
+            .map(|track| {
+                let name = track.suggest_string();
+                let value = track.get_url();
+                AutocompleteChoice::new(name, value)
+            })
+            .collect();
         Ok(autocomplete_choices)
     }
 
     /// Resolve a playlist from a URL. Limit is set to 50 by default.
     /// # Errors
     /// Returns an [`Error`] if the playlist cannot be resolved.
-    pub async fn resolve_playlist<'b>(&self, url: &'b str) -> Result<Vec<ResolvedTrack>, Error> {
+    pub async fn resolve_playlist(&self, url: &str) -> Result<Vec<ResolvedTrack>, Error> {
         self.resolve_playlist_limit(url, DEFAULT_PLAYLIST_LIMIT)
             .await
     }
@@ -480,9 +480,9 @@ impl<'a> CrackTrackClient {
     /// a helper method in the [`CrackTrackClient`].
     /// # Errors
     /// Returns an [`Error`] if the playlist cannot be resolved.
-    pub async fn resolve_playlist_limit<'b>(
+    pub async fn resolve_playlist_limit(
         &self,
-        url: &'b str,
+        url: &str,
         limit: u64,
     ) -> Result<Vec<ResolvedTrack>, Error> {
         let req_options = RequestOptions {
@@ -578,8 +578,8 @@ impl<'a> CrackTrackClient {
 /// # Errors
 /// Returns an error if the query fails.
 pub async fn suggestion2(query: &str) -> Result<Vec<AutocompleteChoice>, Error> {
-    let client = CRACK_TRACK_CLIENT.clone();
-    client.resolve_suggestion_search(query).await
+    // Access the static directly instead of cloning it
+    CRACK_TRACK_CLIENT.resolve_suggestion_search(query).await
 }
 
 /// Get a suggestion from a query. Use the global static client.

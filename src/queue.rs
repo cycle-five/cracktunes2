@@ -26,7 +26,7 @@ impl Default for CrackTrackQueue {
 }
 
 /// Implement [`CrackTrackQueue`].
-impl<'a> CrackTrackQueue {
+impl CrackTrackQueue {
     /// Create a new [`CrackTrackQueue`].
     #[must_use]
     pub fn new() -> Self {
@@ -65,9 +65,6 @@ impl<'a> CrackTrackQueue {
 
     /// Build the display string for the queue.
     /// This *must* be called before displaying the queue.
-    ///
-    /// # Errors
-    /// Returns an error if the display string cannot be built.
     pub async fn build_display(&mut self) {
         self.display = {
             let queue = self.inner.lock().await.clone();

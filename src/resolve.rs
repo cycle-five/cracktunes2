@@ -212,10 +212,16 @@ impl ResolvedTrack {
     /// autocomplete option for the track.
     pub fn autocomplete_option(&self) -> AutocompleteChoice {
         AutocompleteChoice::new(
-            Cow::Owned(self.suggest_string().clone()),
-            Cow::Owned(self.get_url().clone()),
+            self.suggest_string(),
+            self.get_url(),
         )
     }
+}
+
+pub fn resolved_track_to_autocomplete_choice(track: Cow<'_, ResolvedTrack>) -> AutocompleteChoice {
+    let name = track.suggest_string();
+    let value = track.get_url();
+    AutocompleteChoice::new(name, value)
 }
 
 /// Implement [`From`] for [`search::Video`] to [`ResolvedTrack`].
@@ -230,7 +236,7 @@ impl From<search::Video> for ResolvedTrack {
 }
 
 /// Implement [`From`] for ([`rusty_ytdl::Video`], [`VideoDetails`], [`AuxMetadata`]) to [`ResolvedTrack`].
-impl<'a> From<(rusty_ytdl::Video, VideoDetails, AuxMetadata)> for ResolvedTrack {
+impl From<(rusty_ytdl::Video, VideoDetails, AuxMetadata)> for ResolvedTrack {
     fn from(
         (video, video_details, aux_metadata): (rusty_ytdl::Video, VideoDetails, AuxMetadata),
     ) -> Self {

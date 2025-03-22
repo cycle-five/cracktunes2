@@ -33,9 +33,26 @@ type Context<'a> = poise::Context<'a, Data, serenity::Error>;
 struct Handler;
 
 #[async_trait]
-impl serenity::EventHandler for Handler {
-    async fn ready(&self, _: serenity::Context, ready: Ready) {
-        println!("{} is connected!", ready.user.name);
+impl EventHandler for Handler {
+    async fn dispatch(&self, _: &Context, event: &FullEvent) {
+        match event {
+            FullEvent::Ready {
+                data_about_bot, ..
+            } => {
+                // Log at the INFO level. This is a macro from the `tracing` crate.
+                println!("{} is connected!", data_about_bot.user.name);
+            },
+            FullEvent::Resume {
+                ..
+            } => {
+                // Log at the DEBUG level.
+                //
+                // In this example, this will not show up in the logs because DEBUG is
+                // below INFO, which is the set debug level.
+                debug!("Resumed");
+            },
+            _ => {},
+        }
     }
 }
 
@@ -116,7 +133,7 @@ async fn play_next_from_queue(
         // Notify that the track is playing
         check_msg(
             chan_id
-                .say(http.clone(), &format!("Now playing: {}", track.get_title()))
+                .say(&http, &format!("Now playing: {}", track.get_title()))
                 .await,
         );
     }
@@ -465,12 +482,10 @@ async fn mute(ctx: Context<'_>) -> Result<(), serenity::Error> {
 
         if handler.is_mute() {
             ctx.say("Already muted").await?;
+        } else if let Err(e) = handler.mute(true).await {
+           ctx.say(format!("Failed: {:?}", e)).await?;
         } else {
-            if let Err(e) = handler.mute(true).await {
-                ctx.say(format!("Failed: {:?}", e)).await?;
-            } else {
-                ctx.say("Now muted").await?;
-            }
+            ctx.say("Now muted").await?;
         }
     } else {
         ctx.say("Not in a voice channel").await?;
@@ -510,12 +525,10 @@ async fn deafen(ctx: Context<'_>) -> Result<(), serenity::Error> {
 
         if handler.is_deaf() {
             ctx.say("Already deafened").await?;
+        } else if let Err(e) = handler.deafen(true).await {
+            ctx.say(format!("Failed: {:?}", e)).await?;
         } else {
-            if let Err(e) = handler.deafen(true).await {
-                ctx.say(format!("Failed: {:?}", e)).await?;
-            } else {
-                ctx.say("Deafened").await?;
-            }
+            ctx.say("Deafened").await?;
         }
     } else {
         ctx.say("Not in a voice channel").await?;
@@ -565,7 +578,7 @@ async fn undeafen(ctx: Context<'_>) -> Result<(), serenity::Error> {
             ctx.say("Undeafened").await?;
         }
     } else {
-        ctx.say("Not in a voice channel to undeafen in").await?;
+        ctx.say("Not in a voice channel!").await?;
     }
 
     Ok(())
