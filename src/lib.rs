@@ -560,7 +560,7 @@ impl<'a> CrackTrackClient {
     /// but must be created async.
     /// # Errors
     /// Returns an error if the queue's display cannot be built.
-    pub async fn build_display(&mut self, guild: GuildId) -> Result<(), Error> {
+    pub async fn build_display(&mut self, guild: GuildId) {
         self.ensure_queue(guild).build_display().await
     }
 
@@ -691,7 +691,7 @@ async fn match_cli(cli: Cli) -> Result<String, Error> {
                 println!("{track}");
             }
             let () = client.append_queue(guild, tracks).await;
-            client.build_display(guild).await?;
+            client.build_display(guild).await;
             let disp = client.get_display(guild);
             println!("{disp}");
         }
@@ -890,8 +890,7 @@ mod tests {
                 println!("Enqueued: {track}");
                 client
                     .build_display(guild)
-                    .await
-                    .expect("Failed to build display");
+                    .await;
                 let disp: String = client.get_display(guild);
                 println!("{disp}");
             } else if std::env::var("CI").is_err() {
@@ -901,8 +900,7 @@ mod tests {
 
         client
             .build_display(guild)
-            .await
-            .expect("Failed to build display");
+            .await;
 
         let mut q = client.get_queue(guild).await;
         assert_eq!(q.len(), 3);

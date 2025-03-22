@@ -294,10 +294,7 @@ async fn queue(
 
         // Build the display for the queue
         let mut queue_clone = queue.clone();
-        queue_clone
-            .build_display()
-            .await
-            .map_err(|_| serenity::Error::Other("Failed to build queue display"))?;
+        queue_clone.build_display().await;
 
         ctx.say(format!(
             "Added song to queue: position {queue_len}",
@@ -384,8 +381,7 @@ async fn show_queue(ctx: Context<'_>) -> Result<(), serenity::Error> {
     let mut queue_clone = custom_queue.clone();
     queue_clone
         .build_display()
-        .await
-        .map_err(|_| serenity::Error::Other("Failed to build queue display"))?;
+        .await;
 
     let display = queue_clone.get_display();
 
@@ -440,8 +436,7 @@ async fn shuffle(ctx: Context<'_>) -> Result<(), serenity::Error> {
         let mut queue_clone = custom_queue.clone();
         queue_clone
             .build_display()
-            .await
-            .map_err(|_| serenity::Error::Other("Failed to build queue display"))?;
+            .await;
 
         ctx.say("Queue shuffled!").await?;
     } else {

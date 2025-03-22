@@ -1,6 +1,6 @@
 FROM rust:1.85-slim-bookworm AS builder
 
-WORKDIR /usr/src/cracktunes
+WORKDIR /app
 
 # Install dependencies
 RUN apt-get update && \
@@ -16,7 +16,8 @@ RUN apt-get update && \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy the Cargo files first to leverage Docker caching
-COPY Cargo.toml Cargo.lock ./
+COPY Cargo.toml ./
+COPY Cargo.lock ./
 
 # Create a dummy main.rs to build dependencies
 RUN mkdir -p src && \

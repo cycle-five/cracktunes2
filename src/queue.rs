@@ -1,6 +1,5 @@
 use crate::ResolvedTrack;
 use crate::EMPTY_QUEUE;
-use crack_types::Error;
 
 use rand::seq::SliceRandom;
 use std::collections::VecDeque;
@@ -13,7 +12,7 @@ use tokio::sync::Mutex;
 pub struct CrackTrackQueue {
     //inner: Arc<DashMap<GuildId, VecDeque<ResolvedTrack>>>,
     inner: Arc<Mutex<VecDeque<ResolvedTrack>>>,
-    pub(crate) display: Option<String>,
+    pub(crate) display: String,
 }
 
 /// Implement [`Default`] for [`CrackTrackQueue`].
@@ -21,7 +20,7 @@ impl Default for CrackTrackQueue {
     fn default() -> Self {
         CrackTrackQueue {
             inner: Arc::new(Mutex::new(VecDeque::new())),
-            display: None,
+            display: EMPTY_QUEUE.to_string(),
         }
     }
 }
@@ -39,7 +38,7 @@ impl<'a> CrackTrackQueue {
     pub fn with_queue(queue: VecDeque<ResolvedTrack>) -> Self {
         CrackTrackQueue {
             inner: Arc::new(Mutex::new(queue)),
-            display: None,
+            display: EMPTY_QUEUE.to_string(),
         }
     }
 
@@ -50,18 +49,18 @@ impl<'a> CrackTrackQueue {
 
     /// Enqueue a track.
     pub async fn enqueue(&self, track: ResolvedTrack) {
-        self.inner.lock().await.push_back(track);
+        self.push_back(track).await;
     }
 
     /// Dequeue a track.
     pub async fn dequeue(&self) -> Option<ResolvedTrack> {
-        self.inner.lock().await.pop_front()
+        self.pop_front().await
     }
 
     /// Return the display string for the queue.
     #[must_use]
     pub fn get_display(&self) -> String {
-        self.display.clone().unwrap_or_default()
+        self.display.clone()
     }
 
     /// Build the display string for the queue.
@@ -69,18 +68,15 @@ impl<'a> CrackTrackQueue {
     ///
     /// # Errors
     /// Returns an error if the display string cannot be built.
-    pub async fn build_display(&mut self) -> Result<(), Error> {
+    pub async fn build_display(&mut self) {
         self.display = {
             let queue = self.inner.lock().await.clone();
-            Some(
                 queue
                     .iter()
                     .map(ToString::to_string)
                     .collect::<Vec<String>>()
-                    .join("\n"),
-            )
+                    .join("\n")
         };
-        Ok(())
     }
 
     /// Clear the queue in place.
@@ -135,7 +131,7 @@ impl<'a> CrackTrackQueue {
 
     /// Append a vector of tracks to the end of the queue.
     pub async fn append_vec(&self, vec: Vec<ResolvedTrack>) {
-        self.inner.lock().await.append(&mut VecDeque::from(vec));
+        self.append(&mut VecDeque::from(vec)).await;
     }
 
     /// Append another queue to the end of this queue.
@@ -143,18 +139,12 @@ impl<'a> CrackTrackQueue {
         self.inner.lock().await.append(other);
     }
 
-    /// Append another queue to the front of this queue.
-    pub async fn append_front(&self, other: &mut VecDeque<ResolvedTrack>) {
-        self.inner.lock().await.append(&mut other.clone());
-    }
-
     /// Shuffle the queue.
     pub async fn shuffle(&self) {
-        let mut queue = self.inner.lock().await.clone();
-        queue.make_contiguous().shuffle(&mut rand::rng());
-        *self.inner.lock().await = queue;
+        self.inner.lock().await.make_contiguous().shuffle(&mut rand::rng());
     }
 
+    /// Append a copy of this queue to another queue.
     pub async fn append_self_to_other(&self, other: &mut VecDeque<ResolvedTrack>) {
         other.append(&mut self.inner.lock().await.clone());
     }
@@ -163,10 +153,6 @@ impl<'a> CrackTrackQueue {
 /// Implement [`Display`] for [`CrackTrackQueue`].
 impl Display for CrackTrackQueue {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            self.display.as_ref().unwrap_or(&EMPTY_QUEUE.to_string())
-        )
+        write!(f, "{}", self.display)
     }
 }

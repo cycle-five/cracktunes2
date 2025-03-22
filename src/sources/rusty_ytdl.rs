@@ -32,15 +32,6 @@ pub struct RustyYoutubeSearch<'a> {
     pub query: QueryType,
 }
 
-// impl From<ResolvedTrack<'static>> for RustyYoutubeSearch<'static> {
-//     fn from(track: ResolvedTrack<'static>) -> Self {
-//         let query = QueryType::VideoLink(track.get_url());
-//         let client = http_utils::get_client().clone();
-//         RustyYoutubeSearch::new_with_stuff(client, query, track.metadata, track.video)
-//             .unwrap_or_default()
-//     }
-// }
-
 /// Display for the [`RustyYoutubeSearch`] struct.
 impl Display for RustyYoutubeSearch<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

@@ -4,7 +4,7 @@ mod queue_tests {
 
     use tokio;
 
-    use crate::{CrackTrackQueue, ResolvedTrack};
+    use crate::{CrackTrackQueue, ResolvedTrack, EMPTY_QUEUE};
     use crack_types::{QueryType, UserId};
 
     // Helper function to create a test track
@@ -225,7 +225,7 @@ mod queue_tests {
         let mut queue = CrackTrackQueue::new();
         
         // Initially display should be None/empty
-        assert!(queue.display.is_none());
+        assert_eq!(queue.display, EMPTY_QUEUE);
         assert_eq!(queue.get_display(), "");
         
         // Add tracks
@@ -233,13 +233,13 @@ mod queue_tests {
         queue.enqueue(create_test_track("2")).await;
         
         // Display still empty until built
-        assert!(queue.display.is_none());
+        assert_eq!(queue.display, EMPTY_QUEUE);
         
         // Build display
-        queue.build_display().await.expect("Failed to build display");
+        queue.build_display().await;
         
         // Now display should have content
-        assert!(queue.display.is_some());
+        assert_ne!(queue.display, EMPTY_QUEUE);
         let display = queue.get_display();
         assert!(!display.is_empty());
         assert!(display.contains("youtube.com/watch?v=1"));
