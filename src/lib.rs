@@ -5,7 +5,6 @@ pub use resolve::*;
 pub mod event_handlers;
 pub use event_handlers::*;
 
-
 #[cfg(test)]
 pub mod test;
 
@@ -888,9 +887,7 @@ mod tests {
         for query in queries {
             if let Ok(track) = client.enqueue_query(guild, query).await {
                 println!("Enqueued: {track}");
-                client
-                    .build_display(guild)
-                    .await;
+                client.build_display(guild).await;
                 let disp: String = client.get_display(guild);
                 println!("{disp}");
             } else if std::env::var("CI").is_err() {
@@ -898,9 +895,7 @@ mod tests {
             }
         }
 
-        client
-            .build_display(guild)
-            .await;
+        client.build_display(guild).await;
 
         let mut q = client.get_queue(guild).await;
         assert_eq!(q.len(), 3);

@@ -1,10 +1,13 @@
-use crack_types::YoutubeDl;
-use poise::serenity_prelude as serenity;
-use serenity::all::{async_trait, ChannelId, Http, GuildId};
-use songbird::{EventContext, Event, TrackEvent, EventHandler as VoiceEventHandler};
-use std::sync::{Arc, atomic::{AtomicBool, AtomicUsize, Ordering}};
 use crate::check_msg;
 use crate::Data;
+use crack_types::YoutubeDl;
+use poise::serenity_prelude as serenity;
+use serenity::all::{async_trait, ChannelId, GuildId, Http};
+use songbird::{Event, EventContext, EventHandler as VoiceEventHandler, TrackEvent};
+use std::sync::{
+    atomic::{AtomicBool, AtomicUsize, Ordering},
+    Arc,
+};
 
 /// Enhanced TrackEndNotifier with better queue handling
 pub struct EnhancedTrackEndNotifier {
@@ -25,20 +28,27 @@ impl VoiceEventHandler for EnhancedTrackEndNotifier {
                 // Get the handler for this guild
                 if let Some(handler_lock) = self.data.songbird.get(self.guild_id) {
                     let mut handler = handler_lock.lock().await;
-                    
+
                     // Get the next track from our custom queue
                     if let Some(track) = queue.dequeue().await {
                         // Play the next track
-                        let src = songbird::input::Input::from(YoutubeDl::new(self.data.http_client.clone(), track.get_url()));
-                        
+                        let src = songbird::input::Input::from(YoutubeDl::new(
+                            self.data.http_client.clone(),
+                            track.get_url(),
+                        ));
+
                         let song = handler.play_input(src);
-                        
+
                         // Update activity timestamp directly
                         if let Some(idle_info) = self.data.idle_timeouts.get(&self.guild_id) {
-                            let current_time = idle_info.last_activity.load(std::sync::atomic::Ordering::Relaxed);
-                            idle_info.last_activity.store(current_time + 1, std::sync::atomic::Ordering::Relaxed);
+                            let current_time = idle_info
+                                .last_activity
+                                .load(std::sync::atomic::Ordering::Relaxed);
+                            idle_info
+                                .last_activity
+                                .store(current_time + 1, std::sync::atomic::Ordering::Relaxed);
                         }
-                        
+
                         // Add event handlers to the new track
                         let _ = song.add_event(
                             Event::Track(TrackEvent::End),
@@ -50,7 +60,7 @@ impl VoiceEventHandler for EnhancedTrackEndNotifier {
                                 is_looping: self.is_looping.clone(),
                             },
                         );
-                        
+
                         let _ = song.add_event(
                             Event::Track(TrackEvent::Error),
                             EnhancedTrackErrorNotifier {
@@ -61,7 +71,7 @@ impl VoiceEventHandler for EnhancedTrackEndNotifier {
                                 is_looping: self.is_looping.clone(),
                             },
                         );
-                        
+
                         // Notify that the next track is playing
                         check_msg(
                             self.chan_id
@@ -79,17 +89,17 @@ impl VoiceEventHandler for EnhancedTrackEndNotifier {
                             .say(&self.http, "Queue ended. Restarting loop...")
                             .await,
                     );
-                    
+
                     // Handle looping logic by getting the original queue backup
                     // In a real implementation, you'd need to store this somewhere
                     // For now, we'll just indicate that looping would happen here
-                    
+
                     // This is where you'd restore the queue from a backup
                     // For example:
                     // if let Some(backup) = self.data.queue_backups.get(&self.guild_id) {
                     //     let mut original_tracks = backup.value().clone();
                     //     queue.append_vec(original_tracks).await;
-                    //     
+                    //
                     //     // Start playing the first track
                     //     if let Some(handler_lock) = self.data.songbird.get(self.guild_id) {
                     //         // ... similar to the code above to play the next track
@@ -97,15 +107,11 @@ impl VoiceEventHandler for EnhancedTrackEndNotifier {
                     // }
                 } else {
                     // Not looping, just notify queue is finished
-                    check_msg(
-                        self.chan_id
-                            .say(&self.http, "Queue finished.")
-                            .await,
-                    );
+                    check_msg(self.chan_id.say(&self.http, "Queue finished.").await);
                 }
             }
         }
-        
+
         None
     }
 }
@@ -126,13 +132,16 @@ impl VoiceEventHandler for EnhancedTrackErrorNotifier {
             // Notify about the error
             check_msg(
                 self.chan_id
-                    .say(&self.http, "Error playing track, skipping to next in queue...")
+                    .say(
+                        &self.http,
+                        "Error playing track, skipping to next in queue...",
+                    )
                     .await,
             );
-            
+
             // Stop the current track
             let _ = track.stop();
-            
+
             // Get the custom queue for this guild
             if let Some(queue) = self.data.guild_queues.get(&self.guild_id) {
                 // Handle playing next track - same logic as in EnhancedTrackEndNotifier
@@ -140,9 +149,10 @@ impl VoiceEventHandler for EnhancedTrackErrorNotifier {
                 if !queue.is_empty().await {
                     if let Some(handler_lock) = self.data.songbird.get(self.guild_id) {
                         let mut handler = handler_lock.lock().await;
-                        
+
                         if let Some(next_track) = queue.dequeue().await {
-                            let src = YoutubeDl::new(self.data.http_client.clone(), next_track.get_url());
+                            let src =
+                                YoutubeDl::new(self.data.http_client.clone(), next_track.get_url());
                             // let src = match YoutubeDl::new(self.data.http_client.clone(), next_track.get_url()).into_input() {
                             //     Ok(input) => input,
                             //     Err(e) => {
@@ -154,15 +164,19 @@ impl VoiceEventHandler for EnhancedTrackErrorNotifier {
                             //         return None;
                             //     }
                             // };
-                            
+
                             let song = handler.play_input(src.into());
-                            
+
                             // Update activity timestamp directly
                             if let Some(idle_info) = self.data.idle_timeouts.get(&self.guild_id) {
-                                let current_time = idle_info.last_activity.load(std::sync::atomic::Ordering::Relaxed);
-                                idle_info.last_activity.store(current_time + 1, std::sync::atomic::Ordering::Relaxed);
+                                let current_time = idle_info
+                                    .last_activity
+                                    .load(std::sync::atomic::Ordering::Relaxed);
+                                idle_info
+                                    .last_activity
+                                    .store(current_time + 1, std::sync::atomic::Ordering::Relaxed);
                             }
-                            
+
                             // Add the same event handlers to the new track
                             let _ = song.add_event(
                                 Event::Track(TrackEvent::End),
@@ -174,7 +188,7 @@ impl VoiceEventHandler for EnhancedTrackErrorNotifier {
                                     is_looping: self.is_looping.clone(),
                                 },
                             );
-                            
+
                             let _ = song.add_event(
                                 Event::Track(TrackEvent::Error),
                                 EnhancedTrackErrorNotifier {
@@ -185,10 +199,13 @@ impl VoiceEventHandler for EnhancedTrackErrorNotifier {
                                     is_looping: self.is_looping.clone(),
                                 },
                             );
-                            
+
                             check_msg(
                                 self.chan_id
-                                    .say(&self.http, &format!("Now playing: {}", next_track.get_title()))
+                                    .say(
+                                        &self.http,
+                                        &format!("Now playing: {}", next_track.get_title()),
+                                    )
                                     .await,
                             );
                         }
@@ -201,19 +218,15 @@ impl VoiceEventHandler for EnhancedTrackErrorNotifier {
                                 .say(&self.http, "Queue ended. Restarting loop...")
                                 .await,
                         );
-                        
+
                         // Loop handling code would go here
                     } else {
-                        check_msg(
-                            self.chan_id
-                                .say(&self.http, "Queue finished.")
-                                .await,
-                        );
+                        check_msg(self.chan_id.say(&self.http, "Queue finished.").await);
                     }
                 }
             }
         }
-        
+
         None
     }
 }
@@ -231,12 +244,14 @@ impl ChannelDurationNotifier {
     /// Update the last activity timestamp to the current time
     pub fn update_activity(&self) {
         let current_time = self.count.load(Ordering::Relaxed);
-        
+
         // Get or create the idle timeout info for this guild
         let idle_info = self.data.idle_timeouts.entry(self.guild_id).or_default();
-        
+
         // Update the last activity timestamp
-        idle_info.last_activity.store(current_time, Ordering::Relaxed);
+        idle_info
+            .last_activity
+            .store(current_time, Ordering::Relaxed);
     }
 }
 
@@ -245,16 +260,16 @@ impl VoiceEventHandler for ChannelDurationNotifier {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
         let count_before = self.count.fetch_add(1, Ordering::Relaxed);
         let current_time = count_before + 1; // Current time in minutes since joining
-        
+
         // Get the idle timeout info for this guild
         if let Some(idle_info) = self.data.idle_timeouts.get(&self.guild_id) {
             let timeout_minutes = idle_info.timeout_minutes.load(Ordering::Relaxed);
-            
+
             // Check if we should leave due to inactivity (0 means never leave)
             if timeout_minutes > 0 {
                 let last_activity = idle_info.last_activity.load(Ordering::Relaxed);
                 let idle_time = current_time.saturating_sub(last_activity);
-                
+
                 if idle_time >= timeout_minutes {
                     check_msg(
                         self.chan_id
@@ -267,14 +282,14 @@ impl VoiceEventHandler for ChannelDurationNotifier {
                             )
                             .await,
                     );
-                    
+
                     // Leave the channel
                     let _ = self.songbird.remove(self.guild_id).await;
                     return Some(Event::Cancel); // Cancel this event handler
                 }
             }
         }
-        
+
         check_msg(
             self.chan_id
                 .say(

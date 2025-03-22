@@ -4,26 +4,29 @@
 //! Requires the "cache", "voice", and "poise" features be enabled in your
 //! Cargo.toml.
 use std::{
-    env, sync::{
-        atomic::AtomicBool, Arc
-    }, time::Duration
+    env,
+    sync::{atomic::AtomicBool, Arc},
+    time::Duration,
 };
 
-use reqwest::Client as HttpClient;
 use poise::serenity_prelude as serenity;
+use reqwest::Client as HttpClient;
 use serenity::{
     async_trait,
     model::gateway::Ready,
     prelude::{GatewayIntents, Mentionable},
 };
 
-use cracktunes::{event_handlers::{ChannelDurationNotifier, EnhancedTrackErrorNotifier, SongEndNotifier, SongFader}, EnhancedTrackEndNotifier};
-
-use songbird::{
-    input::YoutubeDl, Call, Event, TrackEvent
+use cracktunes::{
+    event_handlers::{
+        ChannelDurationNotifier, EnhancedTrackErrorNotifier, SongEndNotifier, SongFader,
+    },
+    EnhancedTrackEndNotifier,
 };
-use cracktunes::{check_msg, CrackTrackQueue, Data, DataInner, ResolvedTrack};
+
 use crack_types::QueryType;
+use cracktunes::{check_msg, CrackTrackQueue, Data, DataInner, ResolvedTrack};
+use songbird::{input::YoutubeDl, Call, Event, TrackEvent};
 // Define the context type for poise
 type Context<'a> = poise::Context<'a, Data, serenity::Error>;
 
@@ -62,27 +65,31 @@ async fn play_next_from_queue(
         //     Err(e) => {
         //         // Failed to create input for this track
         //         ctx.say(format!("Error playing track \"{}\": {}", track.get_title(), e)).await?;
-                
+
         //         // Try the next track
         //         return play_next_from_queue(ctx, queue, handler).await;
         //     }
         // };
         let _data = Arc::new(ctx.data().clone());
         let src = YoutubeDl::new(ctx.data().http_client.clone(), track.get_url());
-        
+
         let song = handler.play_input(src.into());
-        
+
         // Update activity timestamp directly
         let guild_id = ctx.guild_id().unwrap();
         if let Some(idle_info) = ctx.data().idle_timeouts.get(&guild_id) {
-            let current_time = idle_info.last_activity.load(std::sync::atomic::Ordering::Relaxed);
-            idle_info.last_activity.store(current_time + 1, std::sync::atomic::Ordering::Relaxed);
+            let current_time = idle_info
+                .last_activity
+                .load(std::sync::atomic::Ordering::Relaxed);
+            idle_info
+                .last_activity
+                .store(current_time + 1, std::sync::atomic::Ordering::Relaxed);
         }
-        
+
         // Add the track end event to handle auto-playing the next song
         let chan_id = ctx.channel_id();
         let http = ctx.serenity_context().http.clone();
-        
+
         let _ = song.add_event(
             Event::Track(TrackEvent::End),
             EnhancedTrackEndNotifier {
@@ -93,7 +100,7 @@ async fn play_next_from_queue(
                 is_looping: Arc::new(AtomicBool::new(false)),
             },
         );
-        
+
         // Also add an error handler to skip to next track on failure
         let _ = song.add_event(
             Event::Track(TrackEvent::Error),
@@ -105,7 +112,7 @@ async fn play_next_from_queue(
                 is_looping: Arc::new(AtomicBool::new(false)),
             },
         );
-        
+
         // Notify that the track is playing
         check_msg(
             chan_id
@@ -113,11 +120,9 @@ async fn play_next_from_queue(
                 .await,
         );
     }
-    
+
     Ok(())
 }
-
-
 
 /// Joins the voice channel of the user
 #[poise::command(slash_command, prefix_command, guild_only)]
@@ -135,7 +140,7 @@ async fn join(ctx: Context<'_>) -> Result<(), serenity::Error> {
         None => {
             ctx.say("Not in a voice channel").await?;
             return Ok(());
-        },
+        }
     };
 
     let manager = ctx.data().songbird.clone();
@@ -150,10 +155,12 @@ async fn join(ctx: Context<'_>) -> Result<(), serenity::Error> {
 
         // Initialize the idle timeout info for this guild
         let idle_info = ctx.data().idle_timeouts.entry(guild_id).or_default();
-        
+
         // Initialize the last activity timestamp to the current time (0 minutes since joining)
-        idle_info.last_activity.store(0, std::sync::atomic::Ordering::Relaxed);
-        
+        idle_info
+            .last_activity
+            .store(0, std::sync::atomic::Ordering::Relaxed);
+
         // Create the channel duration notifier
         let notifier = ChannelDurationNotifier {
             chan_id,
@@ -163,12 +170,9 @@ async fn join(ctx: Context<'_>) -> Result<(), serenity::Error> {
             songbird: ctx.data().songbird.clone(),
             data: Arc::new(ctx.data().clone()),
         };
-        
+
         // Add the notifier as a global event
-        handle.add_global_event(
-            Event::Periodic(Duration::from_secs(60), None),
-            notifier,
-        );
+        handle.add_global_event(Event::Periodic(Duration::from_secs(60), None), notifier);
     } else {
         ctx.say("Error joining the channel").await?;
     }
@@ -217,13 +221,17 @@ async fn play_url(
         // This handler object will allow you to, as needed,
         // control the audio track via events and further commands.
         let song = handler.play_input(src.into());
-        
+
         // Update activity timestamp directly
         if let Some(idle_info) = ctx.data().idle_timeouts.get(&guild_id) {
-            let current_time = idle_info.last_activity.load(std::sync::atomic::Ordering::Relaxed);
-            idle_info.last_activity.store(current_time + 1, std::sync::atomic::Ordering::Relaxed);
+            let current_time = idle_info
+                .last_activity
+                .load(std::sync::atomic::Ordering::Relaxed);
+            idle_info
+                .last_activity
+                .store(current_time + 1, std::sync::atomic::Ordering::Relaxed);
         }
-        
+
         let send_http = ctx.serenity_context().http.clone();
         let chan_id = ctx.channel_id();
 
@@ -296,10 +304,8 @@ async fn queue(
         let mut queue_clone = queue.clone();
         queue_clone.build_display().await;
 
-        ctx.say(format!(
-            "Added song to queue: position {queue_len}",
-        ))
-        .await?;
+        ctx.say(format!("Added song to queue: position {queue_len}",))
+            .await?;
     } else {
         ctx.say("Not in a voice channel to play in").await?;
     }
@@ -315,7 +321,7 @@ async fn skip(ctx: Context<'_>) -> Result<(), serenity::Error> {
 
     if let Some(handler_lock) = manager.get(guild_id) {
         let mut handler = handler_lock.lock().await;
-        
+
         // Skip the current song in songbird's queue
         handler.stop();
 
@@ -333,8 +339,7 @@ async fn skip(ctx: Context<'_>) -> Result<(), serenity::Error> {
         }
 
         let len = custom_queue.len().await;
-        ctx.say(format!("Song skipped: {} in queue.", len))
-            .await?;
+        ctx.say(format!("Song skipped: {} in queue.", len)).await?;
     } else {
         ctx.say("Not in a voice channel to play in").await?;
     }
@@ -350,7 +355,7 @@ async fn stop(ctx: Context<'_>) -> Result<(), serenity::Error> {
 
     if let Some(handler_lock) = manager.get(guild_id) {
         let mut handler = handler_lock.lock().await;
-        
+
         // Stop the songbird queue
         handler.stop();
 
@@ -379,9 +384,7 @@ async fn show_queue(ctx: Context<'_>) -> Result<(), serenity::Error> {
     })?;
 
     let mut queue_clone = custom_queue.clone();
-    queue_clone
-        .build_display()
-        .await;
+    queue_clone.build_display().await;
 
     let display = queue_clone.get_display();
 
@@ -402,7 +405,7 @@ async fn shuffle(ctx: Context<'_>) -> Result<(), serenity::Error> {
 
     if let Some(handler_lock) = manager.get(guild_id) {
         let mut handler = handler_lock.lock().await;
-        
+
         // Get our custom queue
         let custom_queue = get_queue(ctx).await.map_err(|e| {
             println!("Error getting queue: {}", e);
@@ -434,9 +437,7 @@ async fn shuffle(ctx: Context<'_>) -> Result<(), serenity::Error> {
 
         // Build the display for the queue
         let mut queue_clone = custom_queue.clone();
-        queue_clone
-            .build_display()
-            .await;
+        queue_clone.build_display().await;
 
         ctx.say("Queue shuffled!").await?;
     } else {
@@ -530,17 +531,21 @@ async fn set_idle_timeout(
     #[description = "Timeout in minutes (0 = never leave)"] minutes: usize,
 ) -> Result<(), serenity::Error> {
     let guild_id = ctx.guild_id().unwrap();
-    
+
     // Get or create the idle timeout info for this guild
     let idle_info = ctx.data().idle_timeouts.entry(guild_id).or_default();
-    
+
     // Update the timeout
-    idle_info.timeout_minutes.store(minutes, std::sync::atomic::Ordering::Relaxed);
-    
+    idle_info
+        .timeout_minutes
+        .store(minutes, std::sync::atomic::Ordering::Relaxed);
+
     if minutes == 0 {
-        ctx.say("Idle timeout disabled. Bot will not automatically leave the channel.").await?;
+        ctx.say("Idle timeout disabled. Bot will not automatically leave the channel.")
+            .await?;
     } else {
-        ctx.say(format!("Idle timeout set to {} minutes.", minutes)).await?;
+        ctx.say(format!("Idle timeout set to {} minutes.", minutes))
+            .await?;
     }
 
     Ok(())
@@ -607,7 +612,7 @@ async fn main() {
         .setup(|ctx, _ready, framework| {
             Box::pin(async move {
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
-                Ok(Data(DataInner{
+                Ok(Data(DataInner {
                     songbird: Arc::clone(&manager_clone),
                     http_client: HttpClient::new(),
                     guild_queues: dashmap::DashMap::new(),

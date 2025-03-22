@@ -71,11 +71,11 @@ impl<'a> CrackTrackQueue {
     pub async fn build_display(&mut self) {
         self.display = {
             let queue = self.inner.lock().await.clone();
-                queue
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect::<Vec<String>>()
-                    .join("\n")
+            queue
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<String>>()
+                .join("\n")
         };
     }
 
@@ -141,7 +141,11 @@ impl<'a> CrackTrackQueue {
 
     /// Shuffle the queue.
     pub async fn shuffle(&self) {
-        self.inner.lock().await.make_contiguous().shuffle(&mut rand::rng());
+        self.inner
+            .lock()
+            .await
+            .make_contiguous()
+            .shuffle(&mut rand::rng());
     }
 
     /// Append a copy of this queue to another queue.
