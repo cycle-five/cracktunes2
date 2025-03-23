@@ -13,8 +13,10 @@ use poise::serenity_prelude as serenity;
 use reqwest::Client as HttpClient;
 use serenity::{
     async_trait,
-    model::gateway::Ready,
+    all::EventHandler,
+    FullEvent,
     prelude::{GatewayIntents, Mentionable},
+    client::Context as SerenityContext,
 };
 
 use cracktunes::{
@@ -27,6 +29,7 @@ use cracktunes::{
 use crack_types::QueryType;
 use cracktunes::{check_msg, CrackTrackQueue, Data, DataInner, ResolvedTrack};
 use songbird::{input::YoutubeDl, Call, Event, TrackEvent};
+use tracing::{debug, info};
 // Define the context type for poise
 type Context<'a> = poise::Context<'a, Data, serenity::Error>;
 
@@ -34,13 +37,13 @@ struct Handler;
 
 #[async_trait]
 impl EventHandler for Handler {
-    async fn dispatch(&self, _: &Context, event: &FullEvent) {
+    async fn dispatch(&self, _: &SerenityContext, event: &FullEvent) {
         match event {
             FullEvent::Ready {
                 data_about_bot, ..
             } => {
                 // Log at the INFO level. This is a macro from the `tracing` crate.
-                println!("{} is connected!", data_about_bot.user.name);
+                info!("{} is connected!", data_about_bot.user.name);
             },
             FullEvent::Resume {
                 ..
@@ -59,7 +62,8 @@ impl EventHandler for Handler {
 // Helper function to get or create a queue for a guild
 async fn get_queue(ctx: Context<'_>) -> Result<CrackTrackQueue, String> {
     let guild_id = ctx.guild_id().ok_or("Not in a guild")?;
-    let queues = &ctx.data().guild_queues;
+    let data = ctx.data();
+    let queues = data.guild_queues;
 
     if !queues.contains_key(&guild_id) {
         queues.insert(guild_id, CrackTrackQueue::new());
@@ -113,7 +117,7 @@ async fn play_next_from_queue(
                 chan_id,
                 http: http.clone(),
                 guild_id: ctx.guild_id().unwrap(),
-                data: Arc::new(ctx.data().clone()),
+                data: ctx.data().clone(),
                 is_looping: Arc::new(AtomicBool::new(false)),
             },
         );
@@ -125,7 +129,7 @@ async fn play_next_from_queue(
                 chan_id,
                 http: http.clone(),
                 guild_id: ctx.guild_id().unwrap(),
-                data: Arc::new(ctx.data().clone()),
+                data: ctx.data().clone(),
                 is_looping: Arc::new(AtomicBool::new(false)),
             },
         );
@@ -185,7 +189,7 @@ async fn join(ctx: Context<'_>) -> Result<(), serenity::Error> {
             http: send_http,
             guild_id,
             songbird: ctx.data().songbird.clone(),
-            data: Arc::new(ctx.data().clone()),
+            data: ctx.data().clone(),
         };
 
         // Add the notifier as a global event
