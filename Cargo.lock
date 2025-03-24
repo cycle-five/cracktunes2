@@ -754,6 +754,7 @@ dependencies = [
 [[package]]
 name = "crack-types"
 version = "0.4.0"
+source = "git+https://github.com/cycle-five/crack-types?branch=serenity-next#8b013e245bc763062e3bce78ac84a8b25ccc34bd"
 dependencies = [
  "anyhow",
  "humantime",
