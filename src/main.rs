@@ -4,30 +4,30 @@
 //! Requires the "cache", "voice", and "poise" features be enabled in your
 //! Cargo.toml.
 use std::{
-    env,
     sync::{atomic::AtomicBool, Arc},
     time::Duration,
 };
 
+use ::serenity::all::Token;
 use poise::serenity_prelude as serenity;
-use reqwest::Client as HttpClient;
 use serenity::{
-    async_trait,
     all::EventHandler,
-    FullEvent,
-    prelude::{GatewayIntents, Mentionable},
+    async_trait,
     client::Context as SerenityContext,
+    prelude::{GatewayIntents, Mentionable},
+    FullEvent,
 };
 
 use cracktunes::{
+    build_crack_track_client,
     event_handlers::{
         ChannelDurationNotifier, EnhancedTrackErrorNotifier, SongEndNotifier, SongFader,
     },
     EnhancedTrackEndNotifier,
 };
 
-use crack_types::QueryType;
-use cracktunes::{check_msg, CrackTrackQueue, Data, DataInner, ResolvedTrack};
+use crack_types::{CrackedError, QueryType};
+use cracktunes::{check_msg, CrackTrackQueue, Data, ResolvedTrack};
 use songbird::{input::YoutubeDl, Call, Event, TrackEvent};
 use tracing::{debug, info};
 // Define the context type for poise
@@ -39,37 +39,26 @@ struct Handler;
 impl EventHandler for Handler {
     async fn dispatch(&self, _: &SerenityContext, event: &FullEvent) {
         match event {
-            FullEvent::Ready {
-                data_about_bot, ..
-            } => {
+            FullEvent::Ready { data_about_bot, .. } => {
                 // Log at the INFO level. This is a macro from the `tracing` crate.
                 info!("{} is connected!", data_about_bot.user.name);
-            },
-            FullEvent::Resume {
-                ..
-            } => {
+            }
+            FullEvent::Resume { .. } => {
                 // Log at the DEBUG level.
                 //
                 // In this example, this will not show up in the logs because DEBUG is
                 // below INFO, which is the set debug level.
                 debug!("Resumed");
-            },
-            _ => {},
+            }
+            _ => {}
         }
     }
 }
 
-// Helper function to get or create a queue for a guild
+// Helper function to get a queue for a guild
 async fn get_queue(ctx: Context<'_>) -> Result<CrackTrackQueue, String> {
     let guild_id = ctx.guild_id().ok_or("Not in a guild")?;
-    let data = ctx.data();
-    let queues = data.guild_queues;
-
-    if !queues.contains_key(&guild_id) {
-        queues.insert(guild_id, CrackTrackQueue::new());
-    }
-
-    Ok(queues.get(&guild_id).unwrap().clone())
+    Ok(ctx.data().get_queue(guild_id))
 }
 
 // Add this to improve the play_next_from_queue function to handle track failures
@@ -81,7 +70,7 @@ async fn play_next_from_queue(
     // Get the next track from our custom queue
     if let Some(track) = queue.dequeue().await {
         // Try to play it with songbird
-        // let src = match YoutubeDl::new(ctx.data().http_client.clone(), track.get_url()).into_input() {
+        // let src = match YoutubeDl::new(ctx.data().req_client.clone(), track.get_url()).into_input() {
         //     Ok(input) => input,
         //     Err(e) => {
         //         // Failed to create input for this track
@@ -92,7 +81,7 @@ async fn play_next_from_queue(
         //     }
         // };
         let _data = Arc::new(ctx.data().clone());
-        let src = YoutubeDl::new(ctx.data().http_client.clone(), track.get_url());
+        let src = YoutubeDl::new(ctx.data().req_client.clone(), track.get_url());
 
         let song = handler.play_input(src.into());
 
@@ -175,12 +164,21 @@ async fn join(ctx: Context<'_>) -> Result<(), serenity::Error> {
         let mut handle = handle_lock.lock().await;
 
         // Initialize the idle timeout info for this guild
-        let idle_info = ctx.data().idle_timeouts.entry(guild_id).or_default();
-
-        // Initialize the last activity timestamp to the current time (0 minutes since joining)
-        idle_info
-            .last_activity
-            .store(0, std::sync::atomic::Ordering::Relaxed);
+        let _ = ctx
+            .data()
+            .idle_timeouts
+            .entry(guild_id)
+            .and_modify(|info| {
+                // Initialize the last activity timestamp to the current time (0 minutes since joining)
+                info.last_activity
+                    .store(0, std::sync::atomic::Ordering::Relaxed);
+            })
+            .or_insert_with(|| {
+                let info = cracktunes::IdleTimeoutInfo::default();
+                info.last_activity
+                    .store(0, std::sync::atomic::Ordering::Relaxed);
+                info
+            });
 
         // Create the channel duration notifier
         let notifier = ChannelDurationNotifier {
@@ -237,7 +235,7 @@ async fn play_url(
     if let Some(handler_lock) = data.songbird.get(guild_id) {
         let mut handler = handler_lock.lock().await;
 
-        let src = YoutubeDl::new(data.http_client.clone(), url);
+        let src = YoutubeDl::new(data.req_client.clone(), url);
 
         // This handler object will allow you to, as needed,
         // control the audio track via events and further commands.
@@ -301,7 +299,7 @@ async fn queue(
     // Get the custom queue for this guild
     let queue = get_queue(ctx).await.map_err(|e| {
         println!("Error getting queue: {}", e);
-        serenity::Error::Other("Failed to get queue")
+        CrackedError::from("Failed to get queue")
     })?;
 
     if let Some(handler_lock) = data.songbird.get(guild_id) {
@@ -349,7 +347,7 @@ async fn skip(ctx: Context<'_>) -> Result<(), serenity::Error> {
         // Also dequeue from our custom queue
         let custom_queue = get_queue(ctx).await.map_err(|e| {
             println!("Error getting queue: {}", e);
-            serenity::Error::Other("Failed to get queue")
+            CrackedError::from("Failed to get queue")
         })?;
 
         let _ = custom_queue.dequeue().await;
@@ -383,7 +381,7 @@ async fn stop(ctx: Context<'_>) -> Result<(), serenity::Error> {
         // Clear our custom queue
         let custom_queue = get_queue(ctx).await.map_err(|e| {
             println!("Error getting queue: {}", e);
-            serenity::Error::Other("Failed to get queue")
+            CrackedError::from("Failed to get queue")
         })?;
 
         custom_queue.clear().await;
@@ -401,7 +399,7 @@ async fn stop(ctx: Context<'_>) -> Result<(), serenity::Error> {
 async fn show_queue(ctx: Context<'_>) -> Result<(), serenity::Error> {
     let custom_queue = get_queue(ctx).await.map_err(|e| {
         println!("Error getting queue: {}", e);
-        serenity::Error::Other("Failed to get queue")
+        CrackedError::from("Failed to get queue")
     })?;
 
     let mut queue_clone = custom_queue.clone();
@@ -430,7 +428,7 @@ async fn shuffle(ctx: Context<'_>) -> Result<(), serenity::Error> {
         // Get our custom queue
         let custom_queue = get_queue(ctx).await.map_err(|e| {
             println!("Error getting queue: {}", e);
-            serenity::Error::Other("Failed to get queue")
+            CrackedError::from("Failed to get queue")
         })?;
 
         // Save the current playing track if there is one
@@ -487,7 +485,7 @@ async fn mute(ctx: Context<'_>) -> Result<(), serenity::Error> {
         if handler.is_mute() {
             ctx.say("Already muted").await?;
         } else if let Err(e) = handler.mute(true).await {
-           ctx.say(format!("Failed: {:?}", e)).await?;
+            ctx.say(format!("Failed: {:?}", e)).await?;
         } else {
             ctx.say("Now muted").await?;
         }
@@ -550,12 +548,21 @@ async fn set_idle_timeout(
     let guild_id = ctx.guild_id().unwrap();
 
     // Get or create the idle timeout info for this guild
-    let idle_info = ctx.data().idle_timeouts.entry(guild_id).or_default();
-
-    // Update the timeout
-    idle_info
-        .timeout_minutes
-        .store(minutes, std::sync::atomic::Ordering::Relaxed);
+    let _ = ctx
+        .data()
+        .idle_timeouts
+        .entry(guild_id)
+        .and_modify(|info| {
+            // Update the timeout
+            info.timeout_minutes
+                .store(minutes, std::sync::atomic::Ordering::Relaxed);
+        })
+        .or_insert_with(|| {
+            let info = cracktunes::IdleTimeoutInfo::default();
+            info.timeout_minutes
+                .store(minutes, std::sync::atomic::Ordering::Relaxed);
+            info
+        });
 
     if minutes == 0 {
         ctx.say("Idle timeout disabled. Bot will not automatically leave the channel.")
@@ -593,7 +600,7 @@ async fn main() {
     tracing_subscriber::fmt::init();
 
     // Configure the client with your Discord bot token in the environment.
-    let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
+    let token = Token::from_env("DISCORD_TOKEN").expect("Expected a token in the environment");
 
     let intents = GatewayIntents::non_privileged();
 
@@ -629,12 +636,8 @@ async fn main() {
         .setup(|ctx, _ready, framework| {
             Box::pin(async move {
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
-                Ok(Data(DataInner {
-                    songbird: Arc::clone(&manager_clone),
-                    http_client: HttpClient::new(),
-                    guild_queues: dashmap::DashMap::new(),
-                    idle_timeouts: dashmap::DashMap::new(),
-                }))
+                let client = build_crack_track_client(manager_clone);
+                Ok(Data(client))
             })
         })
         .build();
@@ -642,7 +645,7 @@ async fn main() {
     let mut client = serenity::ClientBuilder::new(token, intents)
         .event_handler(Handler)
         .framework(framework)
-        .voice_manager_arc(manager)
+        .voice_manager(manager)
         .await
         .expect("Error creating client");
 

@@ -12,18 +12,15 @@ pub mod test;
 // crack_types imports
 //------------------------------------
 // use crack_osint::ipqs::IpqsClient;
-use crack_types::SpotifyTrackTrait;
-use crack_types::TrackResolveError;
-use crack_types::{parse_url, video_info_to_aux_metadata};
-use crack_types::{Error, QueryType, SearchResult};
+use crack_types::{http::parse_url, metadata::video_info_to_aux_metadata};
+use crack_types::{metadata::SearchResult, Error, QueryType};
+use crack_types::{SpotifyTrackTrait, TrackResolveError};
 //------------------------------------
 // External library imports
 //------------------------------------
 use clap::{Parser, Subcommand};
-use dashmap::DashMap;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
-use reqwest::Client as HttpClient;
 use rusty_ytdl::search::{
     Playlist as RustyYTPlaylist, PlaylistSearchOptions as RustyYTPlaylistSearchOptions,
 };
@@ -69,7 +66,7 @@ static REQ_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
     build_configured_reqwest_client()
 });
 
-static YOUTUBE_CLIENT: LazyLock<rusty_ytdl::search::YouTube> = LazyLock::new(|| {
+pub(crate) static YOUTUBE_CLIENT: LazyLock<rusty_ytdl::search::YouTube> = LazyLock::new(|| {
     println!("{CREATING}: {YOUTUBE_CLIENT_STR}...");
     let req_client = REQ_CLIENT.clone();
     let opts = RequestOptions {
@@ -98,24 +95,9 @@ pub fn build_configured_reqwest_client() -> reqwest::Client {
         .unwrap_or_else(|_| panic!("{NEW_FAILED} {REQ_CLIENT_STR}"))
 }
 
-///
-/// The data structure that will be available in all command contexts.
-///
-#[derive(Clone)]
-pub struct Data(pub DataInner);
-
-impl Drop for Data {
-    fn drop(&mut self) {
-        // // Clean up the songbird manager
-        // let songbird = self.songbird.clone();
-        // let guild_queues = self.guild_queues.clone();
-        // let http_client = self.http_client.clone();
-        // drop(songbird);
-        // drop(guild_queues);
-        // drop(http_client);
-    }
+pub fn build_crack_track_client(songbird: Arc<songbird::Songbird>) -> CrackTrackClient {
+    CrackTrackClient::new_with_components(REQ_CLIENT.clone(), YOUTUBE_CLIENT.clone(), songbird)
 }
-
 /// Struct to hold idle timeout information for a guild
 #[derive(Clone)]
 pub struct IdleTimeoutInfo {
@@ -132,19 +114,58 @@ impl Default for IdleTimeoutInfo {
     }
 }
 
-// Define the user data structure that will be available in all command contexts
+impl fmt::Debug for IdleTimeoutInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("IdleTimeoutInfo")
+            .field("timeout_minutes", &self.timeout_minutes)
+            .field("last_activity", &self.last_activity)
+            .finish()
+    }
+}
+
+/// Client for resolving tracks and managing queues. Also holds other clients like
+/// reqwest, `rusty_ytdl`, and songbird.
 #[derive(Clone)]
-pub struct DataInner {
-    pub songbird: Arc<songbird::Songbird>,
-    pub http_client: HttpClient,
+pub struct CrackTrackClient {
+    pub req_client: reqwest::Client,
+    pub yt_client: rusty_ytdl::search::YouTube,
+    pub video_opts: VideoOptions,
     // Map of guild IDs to queues
     pub guild_queues: dashmap::DashMap<serenity::all::GuildId, CrackTrackQueue>,
     // Map of guild IDs to idle timeout information
     pub idle_timeouts: dashmap::DashMap<serenity::all::GuildId, IdleTimeoutInfo>,
+    // Songbird instance for audio
+    pub songbird: Arc<songbird::Songbird>,
+}
+
+impl fmt::Debug for CrackTrackClient {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CrackTrackClient")
+            .field("req_client", &"reqwest::Client")
+            .field("yt_client", &"rusty_ytdl::search::YouTube")
+            .field("video_opts", &self.video_opts)
+            .field("guild_queues", &self.guild_queues)
+            .field("idle_timeouts", &self.idle_timeouts)
+            .field("songbird", &"Arc<songbird::Songbird>")
+            .finish()
+    }
+}
+
+///
+/// The data structure that will be available in all command contexts.
+/// This is a thin wrapper around CrackTrackClient.
+///
+#[derive(Clone)]
+pub struct Data(pub CrackTrackClient);
+
+impl Drop for Data {
+    fn drop(&mut self) {
+        // Clean up resources if needed
+    }
 }
 
 impl std::ops::Deref for Data {
-    type Target = DataInner;
+    type Target = CrackTrackClient;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -155,16 +176,6 @@ impl std::ops::DerefMut for Data {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
-}
-
-/// Client for resolving tracks, mostly holds other clients like reqwest and `rusty_ytdl`.
-#[allow(dead_code)]
-#[derive(Clone, Debug)]
-pub struct CrackTrackClient {
-    pub req_client: reqwest::Client,
-    yt_client: rusty_ytdl::search::YouTube,
-    video_opts: VideoOptions,
-    q: Arc<DashMap<GuildId, CrackTrackQueue>>,
 }
 
 /// Implement [`Default`] for [`CrackTrackClient`].
@@ -184,7 +195,9 @@ impl Default for CrackTrackClient {
             req_client,
             yt_client,
             video_opts,
-            q: Arc::new(DashMap::new()),
+            guild_queues: dashmap::DashMap::new(),
+            idle_timeouts: dashmap::DashMap::new(),
+            songbird: songbird::Songbird::serenity(),
         }
     }
 }
@@ -220,7 +233,34 @@ impl CrackTrackClient {
             req_client,
             yt_client,
             video_opts,
-            q: Arc::new(DashMap::new()),
+            guild_queues: dashmap::DashMap::new(),
+            idle_timeouts: dashmap::DashMap::new(),
+            songbird: songbird::Songbird::serenity(),
+        }
+    }
+
+    /// Create a new [`CrackTrackClient`] with a full set of components
+    #[must_use]
+    pub fn new_with_components(
+        req_client: reqwest::Client,
+        yt_client: rusty_ytdl::search::YouTube,
+        songbird: Arc<songbird::Songbird>,
+    ) -> Self {
+        let req_options = RequestOptions {
+            client: Some(req_client.clone()),
+            ..Default::default()
+        };
+        let video_opts = VideoOptions {
+            request_options: req_options.clone(),
+            ..Default::default()
+        };
+        CrackTrackClient {
+            req_client,
+            yt_client,
+            video_opts,
+            guild_queues: dashmap::DashMap::new(),
+            idle_timeouts: dashmap::DashMap::new(),
+            songbird,
         }
     }
 
@@ -244,7 +284,7 @@ impl CrackTrackClient {
             req_client,
             yt_client,
             video_opts,
-            q: Arc::new(DashMap::new()),
+            ..Default::default()
         }
     }
 
@@ -517,16 +557,29 @@ impl CrackTrackClient {
         suggestion_yt(self.yt_client.clone(), query).await
     }
 
-    /// Ensures a queue exists for a guild, and returns it.
-    pub fn ensure_queue(&self, guild: GuildId) -> CrackTrackQueue {
-        if let Some(q) = self.q.get(&guild) {
+    /// Gets a queue for a guild, ensuring it exists.
+    /// If the queue doesn't exist yet, it will be created.
+    ///
+    /// This replaces the get_queue function from main.rs and
+    /// consolidates it with the existing ensure_queue functionality.
+    pub fn get_queue(&self, guild: GuildId) -> CrackTrackQueue {
+        if let Some(q) = self.guild_queues.get(&guild) {
             q.clone()
         } else {
             let q: &mut CrackTrackQueue = Box::leak(Box::new(CrackTrackQueue::new()));
-            //let q = *q;
-            self.q.insert(guild, q.clone());
+            self.guild_queues.insert(guild, q.clone());
             q.clone()
         }
+    }
+
+    /// Alias for get_queue, maintained for backward compatibility.
+    pub fn ensure_queue(&self, guild: GuildId) -> CrackTrackQueue {
+        self.get_queue(guild)
+    }
+
+    /// Get the raw queue data.
+    pub async fn get_queue_data(&self, guild: GuildId) -> VecDeque<ResolvedTrack> {
+        self.get_queue(guild).get_queue().await
     }
 
     /// Resolve a track from a query and enqueue it.
@@ -538,39 +591,32 @@ impl CrackTrackClient {
         query: QueryType,
     ) -> Result<ResolvedTrack, Error> {
         let track = self.resolve_track(query).await?;
-        let () = self.ensure_queue(guild).push_back(track.clone()).await;
+        let () = self.get_queue(guild).push_back(track.clone()).await;
         Ok(track)
     }
 
     /// Enqueue a track internally.
     pub async fn enqueue_track(&mut self, guild: GuildId, track: ResolvedTrack) {
-        self.ensure_queue(guild).push_back(track.clone()).await;
+        self.get_queue(guild).push_back(track.clone()).await;
     }
 
     /// Append vec of tracks to the queue.
     pub async fn append_queue(&mut self, guild: GuildId, tracks: Vec<ResolvedTrack>) {
         for track in tracks {
-            let () = self.ensure_queue(guild).push_back(track).await;
+            let () = self.get_queue(guild).push_back(track).await;
         }
     }
 
     /// Build the display string for the queue.
     /// This is separate because it needs to be used non-async,
     /// but must be created async.
-    /// # Errors
-    /// Returns an error if the queue's display cannot be built.
     pub async fn build_display(&mut self, guild: GuildId) {
-        self.ensure_queue(guild).build_display().await
+        self.get_queue(guild).build_display().await
     }
 
     /// Get the display string for the queue.
     pub fn get_display(&self, guild: GuildId) -> String {
-        self.ensure_queue(guild).get_display()
-    }
-
-    /// Get the queue.
-    pub async fn get_queue(&self, guild: GuildId) -> VecDeque<ResolvedTrack> {
-        self.ensure_queue(guild).get_queue().await
+        self.get_queue(guild).get_display()
     }
 }
 
@@ -897,9 +943,9 @@ mod tests {
 
         client.build_display(guild).await;
 
-        let mut q = client.get_queue(guild).await;
-        assert_eq!(q.len(), 3);
-        let first = q.pop_front().unwrap();
+        let q = client.get_queue(guild);
+        assert_eq!(q.len().await, 3);
+        let first = q.pop_front().await.unwrap();
         assert!(first.get_title().contains("Molly Nilsson"));
     }
 

@@ -1,8 +1,7 @@
-use crate::check_msg;
-use crate::Data;
-use crack_types::YoutubeDl;
+use crate::{check_msg, Data};
 use poise::serenity_prelude as serenity;
 use serenity::all::{async_trait, ChannelId, GuildId, Http};
+use songbird::input::YoutubeDl;
 use songbird::{Event, EventContext, EventHandler as VoiceEventHandler, TrackEvent};
 use std::sync::{
     atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -33,7 +32,7 @@ impl VoiceEventHandler for EnhancedTrackEndNotifier {
                     if let Some(track) = queue.dequeue().await {
                         // Play the next track
                         let src = songbird::input::Input::from(YoutubeDl::new(
-                            self.data.http_client.clone(),
+                            self.data.req_client.clone(),
                             track.get_url(),
                         ));
 
@@ -152,7 +151,7 @@ impl VoiceEventHandler for EnhancedTrackErrorNotifier {
 
                         if let Some(next_track) = queue.dequeue().await {
                             let src =
-                                YoutubeDl::new(self.data.http_client.clone(), next_track.get_url());
+                                YoutubeDl::new(self.data.req_client.clone(), next_track.get_url());
                             // let src = match YoutubeDl::new(self.data.http_client.clone(), next_track.get_url()).into_input() {
                             //     Ok(input) => input,
                             //     Err(e) => {

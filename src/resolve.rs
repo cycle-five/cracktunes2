@@ -1,8 +1,9 @@
 use crate::{UNKNOWN_DURATION, UNKNOWN_TITLE, UNKNOWN_URL};
-use crack_types::{get_human_readable_timestamp, AuxMetadata, QueryType};
+use crack_types::{get_human_readable_timestamp, QueryType};
 use regex::Regex;
 use rusty_ytdl::{search, VideoDetails};
 use serenity::all::{AutocompleteChoice, UserId};
+use songbird::input::AuxMetadata;
 use std::{
     borrow::Cow,
     fmt::{self, Display, Formatter},
@@ -211,10 +212,7 @@ impl ResolvedTrack {
 
     /// autocomplete option for the track.
     pub fn autocomplete_option(&self) -> AutocompleteChoice {
-        AutocompleteChoice::new(
-            self.suggest_string(),
-            self.get_url(),
-        )
+        AutocompleteChoice::new(self.suggest_string(), self.get_url())
     }
 }
 
@@ -264,7 +262,7 @@ impl Display for ResolvedTrack {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crack_types::{build_mock_rusty_video_details, build_mock_search_video};
+    use crack_types::mocks::{build_mock_rusty_video_details, build_mock_search_video};
     use std::time::Duration;
 
     fn create_mock_video_details() -> VideoDetails {
