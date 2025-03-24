@@ -5,7 +5,6 @@
 # data generated during runtime
 data.tar
 data/
-crack-core/data/
 /logs/
 scratch
 
@@ -25,7 +24,7 @@ dotenv
 dist-manifest.json
 
 # IDE config
-#.vscode/
+.vscode/
 
 # code coverage
 cobertura.xml
