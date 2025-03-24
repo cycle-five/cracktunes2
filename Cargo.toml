@@ -73,7 +73,9 @@ branch = "serenity-next"
 #version = "0.5"
 git = "https://github.com/serenity-rs/songbird"
 branch = "serenity-next"
-features = ["driver", "gateway", "serenity", "rustls", "receive"]
+features = [
+  "driver", "gateway", "serenity", "rustls", "receive"
+]
 
 [dependencies.symphonia]
 version = "0.5.4"
