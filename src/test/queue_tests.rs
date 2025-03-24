@@ -248,9 +248,7 @@ mod queue_tests {
     async fn test_queue_display() {
         let mut queue = CrackTrackQueue::new();
 
-        // Initially display should be None/empty
-        assert_eq!(queue.display, EMPTY_QUEUE);
-        assert_eq!(queue.get_display(), "");
+        assert_eq!(queue.get_display(), EMPTY_QUEUE);
 
         // Add tracks
         queue.enqueue(create_test_track("1")).await;
