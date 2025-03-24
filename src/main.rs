@@ -29,26 +29,46 @@ use cracktunes::{
 use crack_types::{CrackedError, QueryType};
 use cracktunes::{check_msg, CrackTrackQueue, Data, ResolvedTrack};
 use songbird::{input::YoutubeDl, Call, Event, TrackEvent};
-use tracing::{debug, info};
+use tracing::{debug, error, info};
 // Define the context type for poise
 type Context<'a> = poise::Context<'a, Data, serenity::Error>;
 
-struct Handler;
+struct Handler {
+    data: Arc<Data>,
+    commands: Vec<poise::Command<Data, serenity::Error>>,
+}
 
 #[async_trait]
 impl EventHandler for Handler {
-    async fn dispatch(&self, _: &SerenityContext, event: &FullEvent) {
+    async fn dispatch(&self, ctx: &SerenityContext, event: &FullEvent) {
         match event {
             FullEvent::Ready { data_about_bot, .. } => {
-                // Log at the INFO level. This is a macro from the `tracing` crate.
+                #[cfg(feature = "crack-tracing")]
                 info!("{} is connected!", data_about_bot.user.name);
+                #[cfg(not(feature = "crack-tracing"))]
+                println!("{} is connected!", data_about_bot.user.name);
+
+                if let Err(err) =
+                    poise::builtins::register_globally(&ctx.http, &self.commands).await
+                {
+                    #[cfg(feature = "crack-tracing")]
+                    error!("Error registering commands: {}", err);
+                    #[cfg(not(feature = "crack-tracing"))]
+                    eprintln!("Error registering commands: {}", err);
+                } else {
+                    let data_str = self.data.clone().to_string();
+                    #[cfg(feature = "crack-tracing")]
+                    info!("Successfully registered commands: {data_str}");
+                    #[cfg(not(feature = "crack-tracing"))]
+                    println!("Successfully registered commands: {data_str}");
+                }
             }
             FullEvent::Resume { .. } => {
                 // Log at the DEBUG level.
-                //
-                // In this example, this will not show up in the logs because DEBUG is
-                // below INFO, which is the set debug level.
+                #[cfg(feature = "crack-tracing")]
                 debug!("Resumed");
+                #[cfg(not(feature = "crack-tracing"))]
+                println!("Resumed");
             }
             _ => {}
         }
@@ -595,6 +615,26 @@ async fn undeafen(ctx: Context<'_>) -> Result<(), serenity::Error> {
     Ok(())
 }
 
+/// Define commands
+fn get_commands() -> Vec<poise::Command<Data, serenity::Error>> {
+    vec![
+        ping(),
+        join(),
+        leave(),
+        play_url(),
+        queue(),
+        skip(),
+        stop(),
+        show_queue(),
+        shuffle(),
+        mute(),
+        unmute(),
+        deafen(),
+        undeafen(),
+        set_idle_timeout(),
+    ]
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
@@ -604,28 +644,16 @@ async fn main() {
 
     let intents = GatewayIntents::non_privileged();
 
-    let manager = songbird::Songbird::serenity();
+    let manager: Arc<songbird::Songbird> = songbird::Songbird::serenity();
+    let manager_clone: Arc<songbird::Songbird> = Arc::clone(&manager);
 
-    let manager_clone = Arc::clone(&manager);
-    // Set up the poise framework
+    // Create the CrackTrackClient and wrap it in Data
+    let client_data = Data(build_crack_track_client(manager_clone.clone()));
+
+    // Set up the poise framework without using deprecated setup
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
-            commands: vec![
-                ping(),
-                join(),
-                leave(),
-                play_url(),
-                queue(),
-                skip(),
-                stop(),
-                show_queue(),
-                shuffle(),
-                mute(),
-                unmute(),
-                deafen(),
-                undeafen(),
-                set_idle_timeout(),
-            ],
+            commands: get_commands(),
             // Maybe one day
             // prefix_options: poise::PrefixFrameworkOptions {
             //     prefix: Some("~".into()),
@@ -633,19 +661,20 @@ async fn main() {
             // },
             ..Default::default()
         })
-        .setup(|ctx, _ready, framework| {
-            Box::pin(async move {
-                poise::builtins::register_globally(ctx, &framework.options().commands).await?;
-                let client = build_crack_track_client(manager_clone);
-                Ok(Data(client))
-            })
-        })
         .build();
 
+    let arc_data = Arc::new(client_data);
+    // Create an event handler that will register commands and has access to the data
+    let handler = Handler {
+        data: arc_data.clone(),
+        commands: get_commands(),
+    };
+
     let mut client = serenity::ClientBuilder::new(token, intents)
-        .event_handler(Handler)
+        .data(Arc::new(arc_data) as _)
+        .event_handler(handler)
         .framework(framework)
-        .voice_manager(manager)
+        .voice_manager::<songbird::Songbird>(manager)
         .await
         .expect("Error creating client");
 

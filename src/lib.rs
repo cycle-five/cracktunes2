@@ -155,7 +155,7 @@ impl fmt::Debug for CrackTrackClient {
 /// The data structure that will be available in all command contexts.
 /// This is a thin wrapper around CrackTrackClient.
 ///
-#[derive(Clone)]
+//#[derive(Clone)]
 pub struct Data(pub CrackTrackClient);
 
 impl Drop for Data {
