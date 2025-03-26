@@ -35,7 +35,7 @@ use tracing::{debug, error, instrument};
 // Standard library imports
 //------------------------------------
 use std::collections::VecDeque;
-use std::fmt::{self, Display};
+use std::fmt::{self, Debug, Display};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -175,6 +175,12 @@ impl std::ops::Deref for Data {
 impl std::ops::DerefMut for Data {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
+    }
+}
+
+impl Debug for Data {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Data").field("client", &self.0).finish()
     }
 }
 
