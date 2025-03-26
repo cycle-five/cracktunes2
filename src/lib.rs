@@ -4,9 +4,14 @@ pub mod resolve;
 pub use resolve::*;
 pub mod event_handlers;
 pub use event_handlers::*;
+pub mod logging;
+pub use logging::*;
 
 #[cfg(test)]
 pub mod test;
+
+// Define the context type for poise
+pub type Context<'a> = poise::Context<'a, Data, serenity::Error>;
 
 //------------------------------------
 // crack_types imports

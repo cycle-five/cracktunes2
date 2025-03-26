@@ -29,7 +29,7 @@ use cracktunes::{
 use crack_types::{CrackedError, QueryType};
 use cracktunes::{check_msg, CrackTrackQueue, Data, ResolvedTrack};
 use songbird::{input::YoutubeDl, Call, Event, TrackEvent};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 // Define the context type for poise
 type Context<'a> = poise::Context<'a, Data, serenity::Error>;
 
@@ -144,6 +144,16 @@ async fn play_next_from_queue(
             },
         );
 
+        // Log track playback
+        cracktunes::logging::log_track_play_ids(
+            ctx,
+            ctx.guild_id().unwrap(),
+            ctx.author().id,
+            chan_id,
+            &track.get_title(),
+        )
+        .await;
+
         // Notify that the track is playing
         check_msg(
             chan_id
@@ -158,6 +168,14 @@ async fn play_next_from_queue(
 /// Joins the voice channel of the user
 #[poise::command(slash_command, prefix_command, guild_only)]
 async fn join(ctx: Context<'_>) -> Result<(), serenity::Error> {
+    // Log command execution
+    cracktunes::logging::log_command(
+        "join",
+        ctx.guild_id().map(|id| id.get()),
+        ctx.author().id.get(),
+        "",
+        true,
+    );
     let guild = ctx.guild().unwrap().clone();
     let guild_id = guild.id;
 
@@ -223,6 +241,14 @@ async fn join(ctx: Context<'_>) -> Result<(), serenity::Error> {
 /// Leaves the voice channel
 #[poise::command(slash_command, prefix_command, guild_only)]
 async fn leave(ctx: Context<'_>) -> Result<(), serenity::Error> {
+    // Log command execution
+    cracktunes::logging::log_command(
+        "leave",
+        ctx.guild_id().map(|id| id.get()),
+        ctx.author().id.get(),
+        "",
+        true,
+    );
     let guild_id = ctx.guild_id().unwrap();
     let manager = ctx.data().songbird.clone();
 
@@ -245,6 +271,14 @@ async fn play_url(
     ctx: Context<'_>,
     #[description = "URL to a video or audio"] url: String,
 ) -> Result<(), serenity::Error> {
+    // Log command execution
+    cracktunes::logging::log_command(
+        "play_url",
+        ctx.guild_id().map(|id| id.get()),
+        ctx.author().id.get(),
+        &url,
+        true,
+    );
     if !url.starts_with("http") {
         ctx.say("Must provide a valid URL").await?;
         return Ok(());
@@ -309,6 +343,14 @@ async fn queue(
     ctx: Context<'_>,
     #[description = "URL to a video or audio"] url: String,
 ) -> Result<(), serenity::Error> {
+    // Log command execution
+    cracktunes::logging::log_command(
+        "queue",
+        ctx.guild_id().map(|id| id.get()),
+        ctx.author().id.get(),
+        &url,
+        true,
+    );
     if !url.starts_with("http") {
         ctx.say("Must provide a valid URL").await?;
         return Ok(());
@@ -356,6 +398,14 @@ async fn queue(
 /// Skips the current song
 #[poise::command(slash_command, prefix_command, guild_only)]
 async fn skip(ctx: Context<'_>) -> Result<(), serenity::Error> {
+    // Log command execution
+    cracktunes::logging::log_command(
+        "skip",
+        ctx.guild_id().map(|id| id.get()),
+        ctx.author().id.get(),
+        "",
+        true,
+    );
     let guild_id = ctx.guild_id().unwrap();
     let manager = ctx.data().songbird.clone();
 
@@ -390,6 +440,14 @@ async fn skip(ctx: Context<'_>) -> Result<(), serenity::Error> {
 /// Stops playback and clears the queue
 #[poise::command(slash_command, prefix_command, guild_only)]
 async fn stop(ctx: Context<'_>) -> Result<(), serenity::Error> {
+    // Log command execution
+    cracktunes::logging::log_command(
+        "stop",
+        ctx.guild_id().map(|id| id.get()),
+        ctx.author().id.get(),
+        "",
+        true,
+    );
     let guild_id = ctx.guild_id().unwrap();
     let manager = ctx.data().songbird.clone();
 
@@ -418,6 +476,14 @@ async fn stop(ctx: Context<'_>) -> Result<(), serenity::Error> {
 /// Displays the current queue
 #[poise::command(slash_command, prefix_command, guild_only)]
 async fn show_queue(ctx: Context<'_>) -> Result<(), serenity::Error> {
+    // Log command execution
+    cracktunes::logging::log_command(
+        "show_queue",
+        ctx.guild_id().map(|id| id.get()),
+        ctx.author().id.get(),
+        "",
+        true,
+    );
     let custom_queue = get_queue(ctx).await.map_err(|e| {
         println!("Error getting queue: {}", e);
         CrackedError::from("Failed to get queue")
@@ -440,6 +506,14 @@ async fn show_queue(ctx: Context<'_>) -> Result<(), serenity::Error> {
 /// Shuffles the queue
 #[poise::command(slash_command, prefix_command, guild_only)]
 async fn shuffle(ctx: Context<'_>) -> Result<(), serenity::Error> {
+    // Log command execution
+    cracktunes::logging::log_command(
+        "shuffle",
+        ctx.guild_id().map(|id| id.get()),
+        ctx.author().id.get(),
+        "",
+        true,
+    );
     let guild_id = ctx.guild_id().unwrap();
     let manager = ctx.data().songbird.clone();
 
@@ -488,8 +562,17 @@ async fn shuffle(ctx: Context<'_>) -> Result<(), serenity::Error> {
 }
 
 /// Pings the bot
+#[tracing::instrument(skip(ctx))]
 #[poise::command(slash_command, prefix_command)]
 async fn ping(ctx: Context<'_>) -> Result<(), serenity::Error> {
+    // Log command execution
+    cracktunes::logging::log_command(
+        "ping",
+        ctx.guild_id().map(|id| id.get()),
+        ctx.author().id.get(),
+        "",
+        true,
+    );
     ctx.say("Pong!").await?;
     Ok(())
 }
@@ -497,6 +580,14 @@ async fn ping(ctx: Context<'_>) -> Result<(), serenity::Error> {
 /// Mutes the bot
 #[poise::command(slash_command, prefix_command, guild_only)]
 async fn mute(ctx: Context<'_>) -> Result<(), serenity::Error> {
+    // Log command execution
+    cracktunes::logging::log_command(
+        "mute",
+        ctx.guild_id().map(|id| id.get()),
+        ctx.author().id.get(),
+        "",
+        true,
+    );
     let guild_id = ctx.guild_id().unwrap();
     let manager = ctx.data().songbird.clone();
 
@@ -520,6 +611,14 @@ async fn mute(ctx: Context<'_>) -> Result<(), serenity::Error> {
 /// Unmutes the bot
 #[poise::command(slash_command, prefix_command, guild_only)]
 async fn unmute(ctx: Context<'_>) -> Result<(), serenity::Error> {
+    // Log command execution
+    cracktunes::logging::log_command(
+        "unmute",
+        ctx.guild_id().map(|id| id.get()),
+        ctx.author().id.get(),
+        "",
+        true,
+    );
     let guild_id = ctx.guild_id().unwrap();
     let manager = ctx.data().songbird.clone();
 
@@ -540,6 +639,14 @@ async fn unmute(ctx: Context<'_>) -> Result<(), serenity::Error> {
 /// Deafens the bot
 #[poise::command(slash_command, prefix_command, guild_only)]
 async fn deafen(ctx: Context<'_>) -> Result<(), serenity::Error> {
+    // Log command execution
+    cracktunes::logging::log_command(
+        "deafen",
+        ctx.guild_id().map(|id| id.get()),
+        ctx.author().id.get(),
+        "",
+        true,
+    );
     let guild_id = ctx.guild_id().unwrap();
     let manager = ctx.data().songbird.clone();
 
@@ -566,6 +673,14 @@ async fn set_idle_timeout(
     ctx: Context<'_>,
     #[description = "Timeout in minutes (0 = never leave)"] minutes: usize,
 ) -> Result<(), serenity::Error> {
+    // Log command execution
+    cracktunes::logging::log_command(
+        "set_idle_timeout",
+        ctx.guild_id().map(|id| id.get()),
+        ctx.author().id.get(),
+        &minutes.to_string(),
+        true,
+    );
     let guild_id = ctx.guild_id().unwrap();
 
     // Get or create the idle timeout info for this guild
@@ -599,6 +714,14 @@ async fn set_idle_timeout(
 /// Undeafens the bot
 #[poise::command(slash_command, prefix_command, guild_only)]
 async fn undeafen(ctx: Context<'_>) -> Result<(), serenity::Error> {
+    // Log command execution
+    cracktunes::logging::log_command(
+        "undeafen",
+        ctx.guild_id().map(|id| id.get()),
+        ctx.author().id.get(),
+        "",
+        true,
+    );
     let guild_id = ctx.guild_id().unwrap();
     let manager = ctx.data().songbird.clone();
 
@@ -638,7 +761,10 @@ fn get_commands() -> Vec<poise::Command<Data, serenity::Error>> {
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt::init();
+    // Initialize the enhanced logging system
+    if let Err(e) = cracktunes::logging::init() {
+        eprintln!("Failed to initialize logging: {}", e);
+    }
 
     // Configure the client with your Discord bot token in the environment.
     let token = Token::from_env("DISCORD_TOKEN").expect("Expected a token in the environment");
@@ -721,6 +847,7 @@ async fn main() {
         .await
         .expect("Error creating client");
 
+    warn!("Starting client");
     let _ = client
         .start()
         .await
