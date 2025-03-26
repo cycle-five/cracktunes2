@@ -122,13 +122,19 @@ impl Default for IdleTimeoutInfo {
 }
 
 impl IdleTimeoutInfo {
-    /// Increment the last_activity timestamp by 1
-    pub fn update_activity(&self) {
+    /// Increment the last_activity timestamp by 1 (for marking active actions)
+    pub fn bump_activity(&self) {
         let current_time = self
             .last_activity
             .load(std::sync::atomic::Ordering::Relaxed);
         self.last_activity
             .store(current_time + 1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Set the last_activity timestamp to a specific value (for syncing with time tracking)
+    pub fn set_activity_to(&self, time: usize) {
+        self.last_activity
+            .store(time, std::sync::atomic::Ordering::Relaxed);
     }
 }
 

@@ -21,9 +21,7 @@ use serenity::{
 
 use cracktunes::{
     build_crack_track_client,
-    event_handlers::{
-        ChannelDurationNotifier, EnhancedTrackErrorNotifier, SongEndNotifier, SongFader,
-    },
+    event_handlers::{ChannelDurationNotifier, EnhancedTrackErrorNotifier},
     EnhancedTrackEndNotifier,
 };
 
@@ -107,11 +105,11 @@ async fn play_next_from_queue(
 
         let song = handler.play_input(src.into());
 
-        // Update activity timestamp directly
+        // Update activity timestamp by bumping it
         let guild_id = ctx.guild_id().unwrap();
         if let Some(idle_info) = ctx.data().idle_timeouts.get(&guild_id) {
-            // Call the update_activity method directly on the idle_info
-            idle_info.update_activity();
+            // Call the bump_activity method to increment activity
+            idle_info.bump_activity();
         }
 
         // Add the track end event to handle auto-playing the next song
@@ -313,10 +311,10 @@ async fn play_url(
         // control the audio track via events and further commands.
         let _ = handler.play_input(src.into());
 
-        // Update activity timestamp directly
+        // Update activity timestamp by bumping it
         if let Some(idle_info) = ctx.data().idle_timeouts.get(&guild_id) {
-            // Call the update_activity method directly on the idle_info
-            idle_info.update_activity();
+            // Call the bump_activity method to increment activity
+            idle_info.bump_activity();
         }
 
         // let send_http = ctx.serenity_context().http.clone();
@@ -361,7 +359,7 @@ async fn queue(
     })?;
 
     if let Some(handler_lock) = data.songbird.get(guild_id) {
-        let mut handler = handler_lock.lock().await;
+        let handler = handler_lock.lock().await;
 
         // Create a resolved track from the URL
         let query = QueryType::VideoLink(url);

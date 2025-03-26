@@ -36,11 +36,11 @@ impl VoiceEventHandler for EnhancedTrackEndNotifier {
                             track.get_url(),
                         ));
 
-                        let song = handler.play_input(src);
+                        let _ = handler.play_input(src);
 
-                        // Update activity timestamp using the helper method
+                        // Update activity timestamp by bumping it
                         if let Some(idle_info) = self.data.idle_timeouts.get(&self.guild_id) {
-                            idle_info.update_activity();
+                            idle_info.bump_activity();
                         }
 
                         // Notify that the next track is playing
@@ -138,9 +138,9 @@ impl VoiceEventHandler for EnhancedTrackErrorNotifier {
 
                             let song = handler.play_input(src.into());
 
-                            // Update activity timestamp using the helper method
+                            // Update activity timestamp by bumping it
                             if let Some(idle_info) = self.data.idle_timeouts.get(&self.guild_id) {
-                                idle_info.update_activity();
+                                idle_info.bump_activity();
                             }
 
                             // Add the same event handlers to the new track
@@ -206,20 +206,18 @@ pub struct ChannelDurationNotifier {
     pub data: Arc<Data>,
 }
 
-impl ChannelDurationNotifier {
-    /// Update the last activity timestamp to the current time
-    pub fn update_activity(&self) {
-        let current_time = self.count.load(Ordering::Relaxed);
+// impl ChannelDurationNotifier {
+//     /// Update the last activity timestamp to the current time
+//     pub fn update_activity(&self) {
+//         let current_time = self.count.load(Ordering::Relaxed);
 
-        // Get or create the idle timeout info for this guild
-        let idle_info = self.data.idle_timeouts.entry(self.guild_id).or_default();
-
-        // Update the last activity timestamp
-        idle_info
-            .last_activity
-            .store(current_time, Ordering::Relaxed);
-    }
-}
+//         // Get or create the idle timeout info for this guild
+//         if let Some(idle_info) = self.data.idle_timeouts.get(&self.guild_id) {
+//             // Use the new helper method for setting activity to a specific time
+//             idle_info.set_activity_to(current_time);
+//         }
+//     }
+// }
 
 #[async_trait]
 impl VoiceEventHandler for ChannelDurationNotifier {
