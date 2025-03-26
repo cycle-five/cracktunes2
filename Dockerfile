@@ -17,19 +17,19 @@ RUN apt-get update && \
 
 # Copy the Cargo files first to leverage Docker caching
 COPY Cargo.toml /app/
-# COPY Cargo.lock /app/
+COPY Cargo.lock /app/
 
 # Create a dummy main.rs to build dependencies
 RUN mkdir -p src && \
     echo "fn main() {}" > src/main.rs && \
-    cargo build --release && \
+    cargo build --release --locked && \
     rm -rf src
 
 # Copy the actual source code
 COPY . .
 
 # Build the application
-RUN cargo build --release
+RUN cargo build --release --locked
 
 # Create a smaller runtime image
 FROM debian:bookworm-slim
