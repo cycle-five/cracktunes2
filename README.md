@@ -174,7 +174,7 @@ To set up Discord notifications:
 
 ### Playback Controls
 - `/play <url|search query>`: Play a song from YouTube or Spotify (URL or search)
-- `/queue <url|search query>`: Add a song to the queue
+- `/playnext <url|search query>`: Add a song to the front of the queue.
 - `/skip`: Skip to the next song in the queue
 - `/stop`: Stop playback and clear the queue
 - `/show_queue`: Display all songs currently in the queue

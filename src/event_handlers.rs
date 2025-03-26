@@ -259,6 +259,7 @@ impl VoiceEventHandler for ChannelDurationNotifier {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
         let count_before = self.count.fetch_add(1, Ordering::Relaxed);
         let current_time = count_before + 1; // Current time in minutes since joining
+        let mut idle_time = 0;
 
         // Get the idle timeout info for this guild
         if let Some(idle_info) = self.data.idle_timeouts.get(&self.guild_id) {
@@ -267,7 +268,7 @@ impl VoiceEventHandler for ChannelDurationNotifier {
             // Check if we should leave due to inactivity (0 means never leave)
             if timeout_minutes > 0 {
                 let last_activity = idle_info.last_activity.load(Ordering::Relaxed);
-                let idle_time = current_time.saturating_sub(last_activity);
+                idle_time = current_time.saturating_sub(last_activity);
 
                 if idle_time >= timeout_minutes {
                     check_msg(
@@ -294,8 +295,9 @@ impl VoiceEventHandler for ChannelDurationNotifier {
                 .say(
                     &self.http,
                     &format!(
-                        "I've been in this channel for {} minutes!",
-                        count_before + 1
+                        "I've been in this channel for {} minutes! I've been idle for {} minutes.",
+                        count_before + 1,
+                        idle_time
                     ),
                 )
                 .await,

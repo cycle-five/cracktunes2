@@ -62,6 +62,7 @@ impl EventHandler for Handler {
                     #[cfg(not(feature = "crack-tracing"))]
                     println!("Successfully registered commands: {data_str}");
                 }
+                // TODO: Load guilds from the database for persistent configurations
             }
             FullEvent::Resume { .. } => {
                 // Log at the DEBUG level.
@@ -659,6 +660,48 @@ async fn main() {
             //     prefix: Some("~".into()),
             //     ..Default::default()
             // },
+            on_error: |error| {
+                Box::pin(async move {
+                    match error {
+                        poise::FrameworkError::Command { error, ctx, .. } => {
+                            #[cfg(feature = "crack-tracing")]
+                            error!("Error in command `{}`: {:?}", ctx.command().name, error);
+                            #[cfg(not(feature = "crack-tracing"))]
+                            eprintln!("Error in command `{}`: {:?}", ctx.command().name, error);
+
+                            if let Err(e) = ctx.say(format!("An error occurred: {}", error)).await {
+                                #[cfg(feature = "crack-tracing")]
+                                error!("Error while sending error message: {:?}", e);
+                                #[cfg(not(feature = "crack-tracing"))]
+                                eprintln!("Error while sending error message: {:?}", e);
+                            }
+                        }
+                        poise::FrameworkError::CommandCheckFailed { error, ctx, .. } => {
+                            #[cfg(feature = "crack-tracing")]
+                            error!("Command check failed: {:?}", error);
+                            #[cfg(not(feature = "crack-tracing"))]
+                            eprintln!("Command check failed: {:?}", error);
+
+                            if let Some(error) = error {
+                                if let Err(e) =
+                                    ctx.say(format!("Command check failed: {}", error)).await
+                                {
+                                    #[cfg(feature = "crack-tracing")]
+                                    error!("Error while sending check failure message: {:?}", e);
+                                    #[cfg(not(feature = "crack-tracing"))]
+                                    eprintln!("Error while sending check failure message: {:?}", e);
+                                }
+                            }
+                        }
+                        err => {
+                            #[cfg(feature = "crack-tracing")]
+                            error!("Other framework error: {:?}", err);
+                            #[cfg(not(feature = "crack-tracing"))]
+                            eprintln!("Other framework error: {:?}", err);
+                        }
+                    }
+                })
+            },
             ..Default::default()
         })
         .build();
