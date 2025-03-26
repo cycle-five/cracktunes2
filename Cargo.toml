@@ -64,7 +64,7 @@ tokio = { version = "1.44.1", features = ["macros", "rt-multi-thread"] }
 #version = "0.12.4"
 git = "https://github.com/serenity-rs/serenity"
 branch = "next"
-features = ["voice"]
+features = ["cache", "framework", "voice"]
 
 [dependencies.poise]
 #version = "0.6.1"

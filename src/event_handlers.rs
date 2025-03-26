@@ -38,38 +38,10 @@ impl VoiceEventHandler for EnhancedTrackEndNotifier {
 
                         let song = handler.play_input(src);
 
-                        // Update activity timestamp directly
+                        // Update activity timestamp using the helper method
                         if let Some(idle_info) = self.data.idle_timeouts.get(&self.guild_id) {
-                            let current_time = idle_info
-                                .last_activity
-                                .load(std::sync::atomic::Ordering::Relaxed);
-                            idle_info
-                                .last_activity
-                                .store(current_time + 1, std::sync::atomic::Ordering::Relaxed);
+                            idle_info.update_activity();
                         }
-
-                        // Add event handlers to the new track
-                        let _ = song.add_event(
-                            Event::Track(TrackEvent::End),
-                            EnhancedTrackEndNotifier {
-                                chan_id: self.chan_id,
-                                http: self.http.clone(),
-                                guild_id: self.guild_id,
-                                data: self.data.clone(),
-                                is_looping: self.is_looping.clone(),
-                            },
-                        );
-
-                        let _ = song.add_event(
-                            Event::Track(TrackEvent::Error),
-                            EnhancedTrackErrorNotifier {
-                                chan_id: self.chan_id,
-                                http: self.http.clone(),
-                                guild_id: self.guild_id,
-                                data: self.data.clone(),
-                                is_looping: self.is_looping.clone(),
-                            },
-                        );
 
                         // Notify that the next track is playing
                         check_msg(
@@ -166,14 +138,9 @@ impl VoiceEventHandler for EnhancedTrackErrorNotifier {
 
                             let song = handler.play_input(src.into());
 
-                            // Update activity timestamp directly
+                            // Update activity timestamp using the helper method
                             if let Some(idle_info) = self.data.idle_timeouts.get(&self.guild_id) {
-                                let current_time = idle_info
-                                    .last_activity
-                                    .load(std::sync::atomic::Ordering::Relaxed);
-                                idle_info
-                                    .last_activity
-                                    .store(current_time + 1, std::sync::atomic::Ordering::Relaxed);
+                                idle_info.update_activity();
                             }
 
                             // Add the same event handlers to the new track

@@ -121,6 +121,17 @@ impl Default for IdleTimeoutInfo {
     }
 }
 
+impl IdleTimeoutInfo {
+    /// Increment the last_activity timestamp by 1
+    pub fn update_activity(&self) {
+        let current_time = self
+            .last_activity
+            .load(std::sync::atomic::Ordering::Relaxed);
+        self.last_activity
+            .store(current_time + 1, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
 impl fmt::Debug for IdleTimeoutInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("IdleTimeoutInfo")

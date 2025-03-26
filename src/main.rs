@@ -29,7 +29,7 @@ use cracktunes::{
 
 use crack_types::{CrackedError, QueryType};
 use cracktunes::{check_msg, CrackTrackQueue, Data, ResolvedTrack};
-use songbird::{driver::Connect, input::YoutubeDl, Call, Event, TrackEvent};
+use songbird::{input::YoutubeDl, Call, Event, TrackEvent};
 use tracing::{debug, error, info, warn};
 // Define the context type for poise
 type Context<'a> = poise::Context<'a, Data, serenity::Error>;
@@ -110,12 +110,8 @@ async fn play_next_from_queue(
         // Update activity timestamp directly
         let guild_id = ctx.guild_id().unwrap();
         if let Some(idle_info) = ctx.data().idle_timeouts.get(&guild_id) {
-            let current_time = idle_info
-                .last_activity
-                .load(std::sync::atomic::Ordering::Relaxed);
-            idle_info
-                .last_activity
-                .store(current_time + 1, std::sync::atomic::Ordering::Relaxed);
+            // Call the update_activity method directly on the idle_info
+            idle_info.update_activity();
         }
 
         // Add the track end event to handle auto-playing the next song
@@ -171,10 +167,10 @@ async fn join(ctx: Context<'_>) -> Result<(), serenity::Error> {
     let guild = ctx.guild().unwrap().clone();
     let guild_id = guild.id;
 
-    let channel_id = guild
-        .voice_states
-        .get(&ctx.author().id)
-        .and_then(|voice_state| voice_state.channel_id);
+    // let channel_id = guild
+    //     .voice_states
+    //     .get(&ctx.author().id)
+    //     .and_then(|voice_state| voice_state.channel_id);
     let user_id = ctx.author().id;
     let bot_id = ctx.http().get_current_user().await?.id;
     let conn_info = cracktunes::check_voice_connections(&guild, &user_id, &bot_id);
@@ -216,6 +212,28 @@ async fn join(ctx: Context<'_>) -> Result<(), serenity::Error> {
         let send_http = ctx.serenity_context().http.clone();
 
         let mut handle = handle_lock.lock().await;
+
+        // Add the track error and end event handlers globally
+        handle.add_global_event(
+            Event::Track(TrackEvent::Error),
+            EnhancedTrackErrorNotifier {
+                chan_id,
+                http: send_http.clone(),
+                guild_id,
+                data: ctx.data().clone(),
+                is_looping: Arc::new(AtomicBool::new(false)),
+            },
+        );
+        handle.add_global_event(
+            Event::Track(TrackEvent::End),
+            EnhancedTrackEndNotifier {
+                chan_id,
+                http: send_http.clone(),
+                guild_id,
+                data: ctx.data().clone(),
+                is_looping: Arc::new(AtomicBool::new(false)),
+            },
+        );
 
         // Initialize the idle timeout info for this guild
         let _ = ctx
@@ -293,40 +311,26 @@ async fn play_url(
 
         // This handler object will allow you to, as needed,
         // control the audio track via events and further commands.
-        let song = handler.play_input(src.into());
+        let _ = handler.play_input(src.into());
 
         // Update activity timestamp directly
         if let Some(idle_info) = ctx.data().idle_timeouts.get(&guild_id) {
-            let current_time = idle_info
-                .last_activity
-                .load(std::sync::atomic::Ordering::Relaxed);
-            idle_info
-                .last_activity
-                .store(current_time + 1, std::sync::atomic::Ordering::Relaxed);
+            // Call the update_activity method directly on the idle_info
+            idle_info.update_activity();
         }
 
-        let send_http = ctx.serenity_context().http.clone();
-        let chan_id = ctx.channel_id();
+        // let send_http = ctx.serenity_context().http.clone();
+        // let chan_id = ctx.channel_id();
 
-        // This shows how to periodically fire an event, in this case to
-        // periodically make a track quieter until it can be no longer heard.
-        let _ = song.add_event(
-            Event::Periodic(Duration::from_secs(5), Some(Duration::from_secs(7))),
-            SongFader {
-                chan_id,
-                http: send_http.clone(),
-            },
-        );
-
-        // This shows how to fire an event once an audio track completes,
-        // either due to hitting the end of the bytestream or stopped by user code.
-        let _ = song.add_event(
-            Event::Track(TrackEvent::End),
-            SongEndNotifier {
-                chan_id,
-                http: send_http,
-            },
-        );
+        // // This shows how to periodically fire an event, in this case to
+        // // periodically make a track quieter until it can be no longer heard.
+        // let _ = song.add_event(
+        //     Event::Periodic(Duration::from_secs(5), Some(Duration::from_secs(7))),
+        //     SongFader {
+        //         chan_id,
+        //         http: send_http.clone(),
+        //     },
+        // );
 
         ctx.say("Playing song").await?;
     } else {
@@ -357,7 +361,7 @@ async fn queue(
     })?;
 
     if let Some(handler_lock) = data.songbird.get(guild_id) {
-        let handler = handler_lock.lock().await;
+        let mut handler = handler_lock.lock().await;
 
         // Create a resolved track from the URL
         let query = QueryType::VideoLink(url);
