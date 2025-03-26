@@ -6,6 +6,8 @@ pub mod event_handlers;
 pub use event_handlers::*;
 pub mod logging;
 pub use logging::*;
+pub mod connection;
+pub use connection::*;
 
 #[cfg(test)]
 pub mod test;

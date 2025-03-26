@@ -9,6 +9,7 @@ use std::{
 };
 
 use ::serenity::all::Token;
+use cracktunes::Connection;
 use poise::serenity_prelude as serenity;
 use serenity::{
     all::EventHandler,
@@ -28,7 +29,7 @@ use cracktunes::{
 
 use crack_types::{CrackedError, QueryType};
 use cracktunes::{check_msg, CrackTrackQueue, Data, ResolvedTrack};
-use songbird::{input::YoutubeDl, Call, Event, TrackEvent};
+use songbird::{driver::Connect, input::YoutubeDl, Call, Event, TrackEvent};
 use tracing::{debug, error, info, warn};
 // Define the context type for poise
 type Context<'a> = poise::Context<'a, Data, serenity::Error>;
@@ -101,7 +102,7 @@ async fn play_next_from_queue(
         //         return play_next_from_queue(ctx, queue, handler).await;
         //     }
         // };
-        let _data = Arc::new(ctx.data().clone());
+        //let _data = Arc::new(ctx.data().clone());
         let src = YoutubeDl::new(ctx.data().req_client.clone(), track.get_url());
 
         let song = handler.play_input(src.into());
@@ -174,11 +175,34 @@ async fn join(ctx: Context<'_>) -> Result<(), serenity::Error> {
         .voice_states
         .get(&ctx.author().id)
         .and_then(|voice_state| voice_state.channel_id);
+    let user_id = ctx.author().id;
+    let bot_id = ctx.http().get_current_user().await?.id;
+    let conn_info = cracktunes::check_voice_connections(&guild, &user_id, &bot_id);
 
-    let connect_to = match channel_id {
-        Some(channel) => channel,
-        None => {
+    // let connect_to = match channel_id {
+    //     Some(channel) => channel,
+    //     None => {
+    //         ctx.say("Not in a voice channel").await?;
+    //         return Ok(());
+    //     }
+    // };
+
+    let connect_to = match conn_info {
+        Connection::User(channel_id) => channel_id,
+        Connection::Bot(_) => {
+            ctx.say("Bot is already in a voice channel").await?;
+            return Ok(());
+        }
+        Connection::Separate(_, _) => {
+            ctx.say("Bot is already in a voice channel").await?;
+            return Ok(());
+        }
+        Connection::Neither => {
             ctx.say("Not in a voice channel").await?;
+            return Ok(());
+        }
+        Connection::Mutual(_, _) => {
+            ctx.say("Bot is already in your voice channel").await?;
             return Ok(());
         }
     };
@@ -743,7 +767,7 @@ async fn main() {
     };
 
     let mut client = serenity::ClientBuilder::new(token, intents)
-        .data(Arc::new(arc_data) as _)
+        .data::<Data>(arc_data)
         .event_handler(handler)
         .framework(framework)
         .voice_manager::<songbird::Songbird>(manager)
