@@ -50,7 +50,10 @@ pub fn init() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .with_target(true)
         .with_ansi(false)
         .json()
-        .with_writer(command_file);
+        .with_writer(command_file)
+        .with_filter(FilterFn::new(|metadata| {
+            metadata.target() == "cracktunes::command"
+        }));
 
     // Create a layer for track logs (JSON format)
     let track_layer = fmt::layer()
@@ -58,7 +61,10 @@ pub fn init() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .with_target(true)
         .with_ansi(false)
         .json()
-        .with_writer(track_file);
+        .with_writer(track_file)
+        .with_filter(FilterFn::new(|metadata| {
+            metadata.target() == "cracktunes::track"
+        }));
 
     // Create a layer for error logs (JSON format)
     let error_layer = fmt::layer()
@@ -66,7 +72,10 @@ pub fn init() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .with_target(true)
         .with_ansi(false)
         .json()
-        .with_writer(error_file);
+        .with_writer(error_file)
+        .with_filter(FilterFn::new(|metadata| {
+            metadata.target() == "cracktunes::error"
+        }));
 
     // Set up the subscriber with all layers
     // Use env filter to allow runtime configuration of log levels
