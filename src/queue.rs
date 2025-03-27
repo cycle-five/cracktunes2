@@ -12,6 +12,7 @@ use tokio::sync::Mutex;
 pub struct CrackTrackQueue {
     //inner: Arc<DashMap<GuildId, VecDeque<ResolvedTrack>>>,
     inner: Arc<Mutex<VecDeque<ResolvedTrack>>>,
+    pub(crate) playing: Option<ResolvedTrack>,
     pub(crate) display: String,
 }
 
@@ -21,6 +22,7 @@ impl Default for CrackTrackQueue {
         CrackTrackQueue {
             inner: Arc::new(Mutex::new(VecDeque::new())),
             display: EMPTY_QUEUE.to_string(),
+            playing: None,
         }
     }
 }
@@ -38,7 +40,7 @@ impl CrackTrackQueue {
     pub fn with_queue(queue: VecDeque<ResolvedTrack>) -> Self {
         CrackTrackQueue {
             inner: Arc::new(Mutex::new(queue)),
-            display: EMPTY_QUEUE.to_string(),
+            ..Default::default()
         }
     }
 
@@ -66,7 +68,12 @@ impl CrackTrackQueue {
     /// Build the display string for the queue.
     /// This *must* be called before displaying the queue.
     pub async fn build_display(&mut self) {
-        self.display = {
+        let now_playing = if let Some(track) = &self.playing {
+            format!("Now Playing: {}", track)
+        } else {
+            "Nothing is currently playing.".to_string()
+        };
+        let queued = {
             let queue = self.inner.lock().await.clone();
             queue
                 .iter()
@@ -74,6 +81,7 @@ impl CrackTrackQueue {
                 .collect::<Vec<String>>()
                 .join("\n")
         };
+        self.display = format!("{}\n\n{}", now_playing, queued);
     }
 
     /// Clear the queue in place.

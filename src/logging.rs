@@ -39,10 +39,10 @@ pub fn init() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let console_layer = fmt::layer()
         .with_span_events(FmtSpan::CLOSE)
         .with_target(true)
-        .with_ansi(true)
-        .with_filter(FilterFn::new(|metadata| {
-            metadata.target().starts_with("cracktunes")
-        }));
+        .with_ansi(true);
+    // .with_filter(FilterFn::new(|metadata| {
+    //     metadata.target().starts_with("cracktunes")
+    // }));
 
     // Create a layer for command logs (JSON format)
     let command_layer = fmt::layer()
@@ -74,7 +74,8 @@ pub fn init() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .json()
         .with_writer(error_file)
         .with_filter(FilterFn::new(|metadata| {
-            metadata.target() == "cracktunes::error"
+            metadata.target().starts_with("cracktunes")
+                && metadata.level() >= &tracing::Level::ERROR
         }));
 
     // Set up the subscriber with all layers

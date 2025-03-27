@@ -2,7 +2,7 @@ use crate::{check_msg, Data};
 use poise::serenity_prelude as serenity;
 use serenity::all::{async_trait, ChannelId, GuildId, Http};
 use songbird::input::YoutubeDl;
-use songbird::{Event, EventContext, EventHandler as VoiceEventHandler, TrackEvent};
+use songbird::{Event, EventContext, EventHandler as VoiceEventHandler};
 use std::sync::{
     atomic::{AtomicBool, AtomicUsize, Ordering},
     Arc,
@@ -124,47 +124,13 @@ impl VoiceEventHandler for EnhancedTrackErrorNotifier {
                         if let Some(next_track) = queue.dequeue().await {
                             let src =
                                 YoutubeDl::new(self.data.req_client.clone(), next_track.get_url());
-                            // let src = match YoutubeDl::new(self.data.http_client.clone(), next_track.get_url()).into_input() {
-                            //     Ok(input) => input,
-                            //     Err(e) => {
-                            //         check_msg(
-                            //             self.chan_id
-                            //                 .say(&self.http, &format!("Error playing track \"{}\": {}", next_track.get_title(), e))
-                            //                 .await,
-                            //         );
-                            //         return None;
-                            //     }
-                            // };
 
-                            let song = handler.play_input(src.into());
+                            let _song = handler.play_input(src.into());
 
                             // Update activity timestamp by bumping it
                             if let Some(idle_info) = self.data.idle_timeouts.get(&self.guild_id) {
                                 idle_info.bump_activity();
                             }
-
-                            // Add the same event handlers to the new track
-                            let _ = song.add_event(
-                                Event::Track(TrackEvent::End),
-                                EnhancedTrackEndNotifier {
-                                    chan_id: self.chan_id,
-                                    http: self.http.clone(),
-                                    guild_id: self.guild_id,
-                                    data: self.data.clone(),
-                                    is_looping: self.is_looping.clone(),
-                                },
-                            );
-
-                            let _ = song.add_event(
-                                Event::Track(TrackEvent::Error),
-                                EnhancedTrackErrorNotifier {
-                                    chan_id: self.chan_id,
-                                    http: self.http.clone(),
-                                    guild_id: self.guild_id,
-                                    data: self.data.clone(),
-                                    is_looping: self.is_looping.clone(),
-                                },
-                            );
 
                             check_msg(
                                 self.chan_id
@@ -222,52 +188,12 @@ pub struct ChannelDurationNotifier {
 #[async_trait]
 impl VoiceEventHandler for ChannelDurationNotifier {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
-        let count_before = self.count.fetch_add(1, Ordering::Relaxed);
-        let current_time = count_before + 1; // Current time in minutes since joining
-        let mut idle_time = 0;
-
-        // Get the idle timeout info for this guild
-        if let Some(idle_info) = self.data.idle_timeouts.get(&self.guild_id) {
-            let timeout_minutes = idle_info.timeout_minutes.load(Ordering::Relaxed);
-
-            // Check if we should leave due to inactivity (0 means never leave)
-            if timeout_minutes > 0 {
-                let last_activity = idle_info.last_activity.load(Ordering::Relaxed);
-                idle_time = current_time.saturating_sub(last_activity);
-
-                if idle_time >= timeout_minutes {
-                    check_msg(
-                        self.chan_id
-                            .say(
-                                &self.http,
-                                &format!(
-                                    "Leaving channel due to inactivity for {} minutes.",
-                                    idle_time
-                                ),
-                            )
-                            .await,
-                    );
-
-                    // Leave the channel
-                    let _ = self.songbird.remove(self.guild_id).await;
-                    return Some(Event::Cancel); // Cancel this event handler
-                }
-            }
-        }
-
-        check_msg(
-            self.chan_id
-                .say(
-                    &self.http,
-                    &format!(
-                        "I've been in this channel for {} minutes! I've been idle for {} minutes.",
-                        count_before + 1,
-                        idle_time
-                    ),
-                )
-                .await,
-        );
-
+        // 1. Get if we are currently playing a track.
+        // 2. If we are, update the last activity timestamp to the current time.
+        // 3. If we are not, check if the last activity timestamp is older than the threshold.
+        // 4. If it is, notify the channel and leave the voice channel.
+        let handler_lock = self.songbird.get(self.guild_id)?;
+        let handler = handler_lock.lock().await;
         None
     }
 }

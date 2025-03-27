@@ -81,7 +81,7 @@ async fn get_queue(ctx: Context<'_>) -> Result<CrackTrackQueue, String> {
     Ok(ctx.data().get_queue(guild_id))
 }
 
-// Add this to improve the play_next_from_queue function to handle track failures
+/// Play the next track from the queue
 async fn play_next_from_queue(
     ctx: Context<'_>,
     queue: CrackTrackQueue,
@@ -89,21 +89,9 @@ async fn play_next_from_queue(
 ) -> Result<(), serenity::Error> {
     // Get the next track from our custom queue
     if let Some(track) = queue.dequeue().await {
-        // Try to play it with songbird
-        // let src = match YoutubeDl::new(ctx.data().req_client.clone(), track.get_url()).into_input() {
-        //     Ok(input) => input,
-        //     Err(e) => {
-        //         // Failed to create input for this track
-        //         ctx.say(format!("Error playing track \"{}\": {}", track.get_title(), e)).await?;
-
-        //         // Try the next track
-        //         return play_next_from_queue(ctx, queue, handler).await;
-        //     }
-        // };
-        //let _data = Arc::new(ctx.data().clone());
         let src = YoutubeDl::new(ctx.data().req_client.clone(), track.get_url());
 
-        let song = handler.play_input(src.into());
+        let _song = handler.play_input(src.into());
 
         // Update activity timestamp by bumping it
         let guild_id = ctx.guild_id().unwrap();
@@ -115,29 +103,6 @@ async fn play_next_from_queue(
         // Add the track end event to handle auto-playing the next song
         let chan_id = ctx.channel_id();
         let http = ctx.serenity_context().http.clone();
-
-        let _ = song.add_event(
-            Event::Track(TrackEvent::End),
-            EnhancedTrackEndNotifier {
-                chan_id,
-                http: http.clone(),
-                guild_id: ctx.guild_id().unwrap(),
-                data: ctx.data().clone(),
-                is_looping: Arc::new(AtomicBool::new(false)),
-            },
-        );
-
-        // Also add an error handler to skip to next track on failure
-        let _ = song.add_event(
-            Event::Track(TrackEvent::Error),
-            EnhancedTrackErrorNotifier {
-                chan_id,
-                http: http.clone(),
-                guild_id: ctx.guild_id().unwrap(),
-                data: ctx.data().clone(),
-                is_looping: Arc::new(AtomicBool::new(false)),
-            },
-        );
 
         // Log track playback using the new async function
         cracktunes::logging::log_track_play(
@@ -165,21 +130,9 @@ async fn join(ctx: Context<'_>) -> Result<(), serenity::Error> {
     let guild = ctx.guild().unwrap().clone();
     let guild_id = guild.id;
 
-    // let channel_id = guild
-    //     .voice_states
-    //     .get(&ctx.author().id)
-    //     .and_then(|voice_state| voice_state.channel_id);
     let user_id = ctx.author().id;
     let bot_id = ctx.http().get_current_user().await?.id;
     let conn_info = cracktunes::check_voice_connections(&guild, &user_id, &bot_id);
-
-    // let connect_to = match channel_id {
-    //     Some(channel) => channel,
-    //     None => {
-    //         ctx.say("Not in a voice channel").await?;
-    //         return Ok(());
-    //     }
-    // };
 
     let connect_to = match conn_info {
         Connection::User(channel_id) => channel_id,
@@ -272,10 +225,13 @@ async fn join(ctx: Context<'_>) -> Result<(), serenity::Error> {
 /// Leaves the voice channel
 #[poise::command(slash_command, prefix_command, guild_only)]
 async fn leave(ctx: Context<'_>) -> Result<(), serenity::Error> {
-    let guild_id = ctx.guild_id().unwrap();
+    let guild_id = ctx.guild_id().ok_or(CrackedError::from("No guild ID?"))?;
     let manager = ctx.data().songbird.clone();
 
-    if manager.get(guild_id).is_some() {
+    if let Some(handle_lock) = manager.get(guild_id) {
+        // Remove all global events
+        handle_lock.lock().await.remove_all_global_events();
+
         if let Err(e) = manager.remove(guild_id).await {
             ctx.say(format!("Failed: {:?}", e)).await?;
         } else {
@@ -288,7 +244,7 @@ async fn leave(ctx: Context<'_>) -> Result<(), serenity::Error> {
     Ok(())
 }
 
-/// Plays a song with a fade effect
+/// Plays a track from a URL
 #[poise::command(slash_command, prefix_command, guild_only)]
 async fn play_url(
     ctx: Context<'_>,
@@ -313,26 +269,12 @@ async fn play_url(
 
         // Update activity timestamp by bumping it
         if let Some(idle_info) = ctx.data().idle_timeouts.get(&guild_id) {
-            // Call the bump_activity method to increment activity
             idle_info.bump_activity();
         }
 
-        // let send_http = ctx.serenity_context().http.clone();
-        // let chan_id = ctx.channel_id();
-
-        // // This shows how to periodically fire an event, in this case to
-        // // periodically make a track quieter until it can be no longer heard.
-        // let _ = song.add_event(
-        //     Event::Periodic(Duration::from_secs(5), Some(Duration::from_secs(7))),
-        //     SongFader {
-        //         chan_id,
-        //         http: send_http.clone(),
-        //     },
-        // );
-
         ctx.say("Playing song").await?;
     } else {
-        ctx.say("Not in a voice channel to play in").await?;
+        ctx.say("Not in a voice channel").await?;
     }
 
     Ok(())
@@ -354,8 +296,9 @@ async fn queue(
 
     // Get the custom queue for this guild
     let queue = get_queue(ctx).await.map_err(|e| {
-        println!("Error getting queue: {}", e);
-        CrackedError::from("Failed to get queue")
+        let err_fmt = Cow::Owned(format!("Error getting queue: {}", e));
+        error!("{}", err_fmt);
+        CrackedError::Other(err_fmt)
     })?;
 
     if let Some(handler_lock) = data.songbird.get(guild_id) {
