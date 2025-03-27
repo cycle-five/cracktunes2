@@ -5,9 +5,11 @@ use std::path::Path;
 use std::time::Instant;
 use tracing::{error, info};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
+use tracing_subscriber::filter::FilterFn;
 use tracing_subscriber::{
     fmt::{self, format::FmtSpan},
     layer::SubscriberExt,
+    prelude::*,
     util::SubscriberInitExt,
     EnvFilter,
 };
@@ -37,7 +39,10 @@ pub fn init() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let console_layer = fmt::layer()
         .with_span_events(FmtSpan::CLOSE)
         .with_target(true)
-        .with_ansi(true);
+        .with_ansi(true)
+        .with_filter(FilterFn::new(|metadata| {
+            metadata.target().starts_with("cracktunes")
+        }));
 
     // Create a layer for command logs (JSON format)
     let command_layer = fmt::layer()
@@ -86,11 +91,11 @@ pub fn init() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
 // Store command start time in the context data
 thread_local! {
-    static COMMAND_START_TIME: std::cell::RefCell<Option<Instant>> = std::cell::RefCell::new(None);
+    static COMMAND_START_TIME: std::cell::RefCell<Option<Instant>> = const { std::cell::RefCell::new(None) };
 }
 
 /// Log the start of a command execution (pre-command hook)
-pub async fn log_command_start<'a>(ctx: Context<'a, Data, serenity::Error>) {
+pub async fn log_command_start(ctx: Context<'_, Data, serenity::Error>) {
     // Store the start time for later use in post_command
     COMMAND_START_TIME.with(|cell| {
         *cell.borrow_mut() = Some(Instant::now());
@@ -125,7 +130,7 @@ pub async fn log_command_start<'a>(ctx: Context<'a, Data, serenity::Error>) {
 }
 
 /// Log the end of a command execution (post-command hook)
-pub async fn log_command_end<'a>(ctx: Context<'a, Data, serenity::Error>) {
+pub async fn log_command_end(ctx: Context<'_, Data, serenity::Error>) {
     // Calculate execution time
     let duration =
         COMMAND_START_TIME.with(|cell| cell.borrow_mut().take().map(|start| start.elapsed()));
