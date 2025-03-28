@@ -32,11 +32,11 @@ mod queue_tests {
         let track1 = create_test_track("1");
         let track2 = create_test_track("2");
 
-        queue.enqueue(track1.clone()).await;
+        queue.enqueue(track1.clone(), None).await;
         assert_eq!(queue.len().await, 1);
         assert!(!queue.is_empty().await);
 
-        queue.enqueue(track2.clone()).await;
+        queue.enqueue(track2.clone(), None).await;
         assert_eq!(queue.len().await, 2);
 
         // Dequeue tracks (FIFO order)
@@ -55,9 +55,9 @@ mod queue_tests {
         let queue = CrackTrackQueue::new();
 
         // Add tracks
-        queue.enqueue(create_test_track("1")).await;
-        queue.enqueue(create_test_track("2")).await;
-        queue.enqueue(create_test_track("3")).await;
+        queue.enqueue(create_test_track("1"), None).await;
+        queue.enqueue(create_test_track("2"), None).await;
+        queue.enqueue(create_test_track("3"), None).await;
 
         assert_eq!(queue.len().await, 3);
 
@@ -76,9 +76,9 @@ mod queue_tests {
         let track2 = create_test_track("2");
         let track3 = create_test_track("3");
 
-        queue.enqueue(track1.clone()).await;
-        queue.enqueue(track2.clone()).await;
-        queue.enqueue(track3.clone()).await;
+        queue.enqueue(track1.clone(), None).await;
+        queue.enqueue(track2.clone(), None).await;
+        queue.enqueue(track3.clone(), None).await;
 
         // Get track at index
         let get_track2 = queue.get(1).await.unwrap();
@@ -128,8 +128,8 @@ mod queue_tests {
         let queue = CrackTrackQueue::new();
 
         // Add tracks
-        queue.enqueue(create_test_track("1")).await;
-        queue.enqueue(create_test_track("3")).await;
+        queue.enqueue(create_test_track("1"), None).await;
+        queue.enqueue(create_test_track("3"), None).await;
 
         // Insert in the middle
         let track2 = create_test_track("2");
@@ -155,8 +155,8 @@ mod queue_tests {
         let queue = CrackTrackQueue::new();
 
         // Add initial tracks
-        queue.enqueue(create_test_track("1")).await;
-        queue.enqueue(create_test_track("2")).await;
+        queue.enqueue(create_test_track("1"), None).await;
+        queue.enqueue(create_test_track("2"), None).await;
 
         // Create a vector of tracks to append
         let tracks = vec![create_test_track("3"), create_test_track("4")];
@@ -200,7 +200,7 @@ mod queue_tests {
 
         // Add a bunch of tracks
         for i in 1..11 {
-            queue.enqueue(create_test_track(&i.to_string())).await;
+            queue.enqueue(create_test_track(&i.to_string()), None).await;
         }
 
         // Get the original order
@@ -251,8 +251,8 @@ mod queue_tests {
         assert_eq!(queue.get_display(), EMPTY_QUEUE);
 
         // Add tracks
-        queue.enqueue(create_test_track("1")).await;
-        queue.enqueue(create_test_track("2")).await;
+        queue.enqueue(create_test_track("1"), None).await;
+        queue.enqueue(create_test_track("2"), None).await;
 
         // Display still empty until built
         assert_eq!(queue.display, EMPTY_QUEUE);
@@ -273,8 +273,8 @@ mod queue_tests {
         let queue = CrackTrackQueue::new();
 
         // Add tracks
-        queue.enqueue(create_test_track("1")).await;
-        queue.enqueue(create_test_track("2")).await;
+        queue.enqueue(create_test_track("1"), None).await;
+        queue.enqueue(create_test_track("2"), None).await;
 
         // Clone the queue
         let queue_clone = queue.clone();
@@ -283,7 +283,7 @@ mod queue_tests {
         assert_eq!(queue.len().await, queue_clone.len().await);
 
         // Modifying one *should* affect the other
-        queue.enqueue(create_test_track("3")).await;
+        queue.enqueue(create_test_track("3"), None).await;
         assert_eq!(queue.len().await, 3);
         assert_eq!(queue_clone.len().await, 3);
 

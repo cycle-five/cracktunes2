@@ -25,31 +25,32 @@ impl VoiceEventHandler for EnhancedTrackEndNotifier {
             // Check if there are more tracks in the queue
             if !queue.is_empty().await {
                 // Get the handler for this guild
-                if let Some(handler_lock) = self.data.songbird.get(self.guild_id) {
-                    let mut handler = handler_lock.lock().await;
+                // Update our metadata queue to match Songbird's state
+                // by removing the track that just ended
+                let _ = queue.dequeue().await;
 
-                    // Get the next track from our custom queue
-                    if let Some(track) = queue.dequeue().await {
-                        // Play the next track
-                        let src = songbird::input::Input::from(YoutubeDl::new(
-                            self.data.req_client.clone(),
-                            track.get_url(),
-                        ));
-
-                        let _ = handler.play_input(src);
-
-                        // Update activity timestamp by bumping it
-                        if let Some(idle_info) = self.data.idle_timeouts.get(&self.guild_id) {
-                            idle_info.bump_activity();
-                        }
-
+                // Check if there are more tracks in the queue
+                if !queue.is_empty().await {
+                    // Get the next track from our custom queue for display purposes
+                    if let Some(next_track) = queue.get(0).await {
                         // Notify that the next track is playing
                         check_msg(
                             self.chan_id
-                                .say(&self.http, &format!("Now playing: {}", track.get_title()))
+                                .say(
+                                    &self.http,
+                                    &format!("Now playing: {}", next_track.get_title()),
+                                )
                                 .await,
                         );
+
+                        // Update activity timestamp
+                        if let Some(idle_info) = self.data.idle_timeouts.get(&self.guild_id) {
+                            idle_info.bump_activity();
+                        }
                     }
+                } else {
+                    // Queue is empty
+                    check_msg(self.chan_id.say(&self.http, "Queue finished.").await);
                 }
             } else {
                 // Queue is empty

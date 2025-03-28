@@ -46,9 +46,9 @@ mod integration_tests {
         ))
         .with_user_id(UserId::new(1));
 
-        queue.enqueue(track1).await;
-        queue.enqueue(track2).await;
-        queue.enqueue(track3).await;
+        queue.enqueue(track1, None).await;
+        queue.enqueue(track2, None).await;
+        queue.enqueue(track3, None).await;
 
         queue
     }
@@ -80,7 +80,7 @@ mod integration_tests {
                     i
                 )))
                 .with_user_id(UserId::new(1));
-                queue_clone2.enqueue(track).await;
+                queue_clone2.enqueue(track, None).await;
                 tokio::time::sleep(Duration::from_millis(15)).await;
             }
             vec![]
@@ -166,14 +166,14 @@ mod integration_tests {
             "https://www.youtube.com/watch?v=guild1".to_string(),
         ))
         .with_user_id(UserId::new(1));
-        queue1.enqueue(track1).await;
+        queue1.enqueue(track1, None).await;
 
         let queue2 = queues.get(&guild2).unwrap();
         let track2 = ResolvedTrack::new(QueryType::VideoLink(
             "https://www.youtube.com/watch?v=guild2".to_string(),
         ))
         .with_user_id(UserId::new(2));
-        queue2.enqueue(track2).await;
+        queue2.enqueue(track2, None).await;
 
         // Verify each queue has its own content
         assert_eq!(queue1.len().await, 1);

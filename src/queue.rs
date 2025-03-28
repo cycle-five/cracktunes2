@@ -64,12 +64,22 @@ impl CrackTrackQueue {
     }
 
     // Update enqueue to add to both queues
-    pub async fn enqueue(&self, track: ResolvedTrack) {
+    pub async fn enqueue(
+        &self,
+        track: ResolvedTrack,
+        pre_acquired_call: Option<&mut songbird::Call>,
+    ) {
         // Add to metadata queue
         self.push_back(track.clone()).await;
 
-        // Add to Songbird queue if available
-        if let (Some(songbird_call), Some(req_client)) = (&self.songbird_call, &self.req_client) {
+        // If we have a pre-acquired call, use it; otherwise acquire our own lock
+        if let Some(call) = pre_acquired_call {
+            let input =
+                songbird::input::YoutubeDl::new(self.req_client.clone().unwrap(), track.get_url());
+            let _ = call.enqueue_input(input.into()).await;
+        } else if let (Some(songbird_call), Some(req_client)) =
+            (&self.songbird_call, &self.req_client)
+        {
             let input = songbird::input::YoutubeDl::new(req_client.clone(), track.get_url());
             let mut call = songbird_call.lock().await;
             let _ = call.enqueue_input(input.into()).await;

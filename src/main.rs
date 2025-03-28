@@ -27,7 +27,7 @@ use cracktunes::{
 
 use crack_types::{CrackedError, QueryType};
 use cracktunes::{check_msg, CrackTrackQueue, Data, ResolvedTrack};
-use songbird::{input::YoutubeDl, Call, Event, TrackEvent};
+use songbird::{input::YoutubeDl, Event, TrackEvent};
 use tracing::{debug, error, info, warn};
 // Define the context type for poise
 type Context<'a> = poise::Context<'a, Data, serenity::Error>;
@@ -85,38 +85,34 @@ async fn get_queue(ctx: Context<'_>) -> Result<CrackTrackQueue, String> {
 async fn play_next_from_queue(
     ctx: Context<'_>,
     queue: CrackTrackQueue,
-    mut handler: Call,
 ) -> Result<(), serenity::Error> {
     // Get the next track from our custom queue
-    if let Some(track) = queue.dequeue().await {
-        let src = YoutubeDl::new(ctx.data().req_client.clone(), track.get_url());
-
-        let _song = handler.play_input(src.into());
+    if let Some(track) = queue.get(0).await {
+        // Songbird will automatically play the next track
+        // We just need to update our display and logging
 
         // Update activity timestamp by bumping it
         let guild_id = ctx.guild_id().unwrap();
         if let Some(idle_info) = ctx.data().idle_timeouts.get(&guild_id) {
-            // Call the bump_activity method to increment activity
             idle_info.bump_activity();
         }
 
-        // Add the track end event to handle auto-playing the next song
-        let chan_id = ctx.channel_id();
-        let http = ctx.serenity_context().http.clone();
-
-        // Log track playback using the new async function
+        // Log track playback
         cracktunes::logging::log_track_play(
             ctx.guild_id().unwrap(),
             ctx.author().id,
-            chan_id,
+            ctx.channel_id(),
             &track.get_title(),
         )
         .await;
 
         // Notify that the track is playing
         check_msg(
-            chan_id
-                .say(&http, &format!("Now playing: {}", track.get_title()))
+            ctx.channel_id()
+                .say(
+                    &ctx.serenity_context().http,
+                    &format!("Now playing: {}", track.get_title()),
+                )
                 .await,
         );
     }
@@ -308,16 +304,12 @@ async fn queue(
         let query = QueryType::VideoLink(url);
         let track = ResolvedTrack::new(query).with_user_id(ctx.author().id);
 
-        // Add to our custom queue
-        queue.enqueue(track.clone()).await;
+        let mut call = handler.clone();
+        // Add to our custom queue (which will also add to Songbird's queue)
+        queue.enqueue(track.clone(), Some(&mut call)).await;
 
         // Check if we need to start playing (if this is the first track)
         let queue_len = queue.len().await;
-        if queue_len == 1 {
-            // This is the first track, so start playing
-            play_next_from_queue(ctx, queue.clone(), handler.clone()).await?;
-        }
-
         // Build the display for the queue
         let mut queue_clone = queue.clone();
         queue_clone.build_display().await;
@@ -338,10 +330,10 @@ async fn skip(ctx: Context<'_>) -> Result<(), serenity::Error> {
     let manager = ctx.data().songbird.clone();
 
     if let Some(handler_lock) = manager.get(guild_id) {
-        let mut handler = handler_lock.lock().await;
+        let handler = handler_lock.lock().await;
 
         // Skip the current song in songbird's queue
-        handler.stop();
+        let _ = handler.queue().skip();
 
         // Also dequeue from our custom queue
         let custom_queue = get_queue(ctx).await.map_err(|e| {
@@ -350,11 +342,6 @@ async fn skip(ctx: Context<'_>) -> Result<(), serenity::Error> {
         })?;
 
         let _ = custom_queue.dequeue().await;
-
-        // Play the next song from our custom queue
-        if !custom_queue.is_empty().await {
-            play_next_from_queue(ctx, custom_queue.clone(), handler.clone()).await?;
-        }
 
         let len = custom_queue.len().await;
         ctx.say(format!("Song skipped: {} in queue.", len)).await?;
@@ -450,7 +437,7 @@ async fn shuffle(ctx: Context<'_>) -> Result<(), serenity::Error> {
 
         // Play the next track from our shuffled queue
         if !custom_queue.is_empty().await {
-            play_next_from_queue(ctx, custom_queue.clone(), handler.clone()).await?;
+            play_next_from_queue(ctx, custom_queue.clone()).await?;
         }
 
         // Build the display for the queue
