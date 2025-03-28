@@ -314,7 +314,7 @@ async fn queue(
         let mut queue_clone = queue.clone();
         queue_clone.build_display().await;
 
-        ctx.say(format!("Added song to queue: position {queue_len}",))
+        ctx.say(format!("Added song to queue: position {queue_len}"))
             .await?;
     } else {
         ctx.say("Not in a voice channel to play in").await?;
