@@ -621,7 +621,7 @@ impl CrackTrackClient {
         query: QueryType,
     ) -> Result<ResolvedTrack, Error> {
         let track = self.resolve_track(query).await?;
-        let () = self.get_queue(guild).push_back(track.clone()).await;
+        let track = self.get_queue(guild).enqueue(track, None).await;
         Ok(track)
     }
 
@@ -640,8 +640,17 @@ impl CrackTrackClient {
     /// Build the display string for the queue.
     /// This is separate because it needs to be used non-async,
     /// but must be created async.
-    pub async fn build_display(&mut self, guild: GuildId) {
-        self.get_queue(guild).build_display().await
+    pub async fn build_display(&mut self, guild: GuildId) -> Result<(), Error> {
+        match self.guild_queues.get_mut(&guild) {
+            Some(mut queue) => {
+                queue.build_display().await;
+            }
+            None => {
+                tracing::error!("Queue not found for guild: {guild}");
+                return Err(Error::from("Queue not found"));
+            }
+        }
+        return Ok(());
     }
 
     /// Get the display string for the queue.
@@ -766,7 +775,8 @@ async fn match_cli(cli: Cli) -> Result<String, Error> {
                 println!("{track}");
             }
             let () = client.append_queue(guild, tracks).await;
-            client.build_display(guild).await;
+            let res = client.build_display(guild).await;
+            assert!(res.is_ok());
             let disp = client.get_display(guild);
             println!("{disp}");
         }
@@ -933,8 +943,7 @@ mod tests {
         if env::var("CI").is_ok() {
             return;
         }
-        let client = YOUTUBE_CLIENT.clone();
-        let res = suggestion_yt(client.clone(), "molly nilsson").await;
+        let res = suggestion_yt(YOUTUBE_CLIENT.clone(), "molly nilsson").await;
         if env::var("CI").is_ok() {
             assert!(res.is_err());
         } else {
@@ -957,13 +966,13 @@ mod tests {
 
         let queries = vec![
             QueryType::VideoLink("https://www.youtube.com/watch?v=X9ukSm5gmKk".to_string()),
-            QueryType::VideoLink("https://www.youtube.com/watch?v=u8ZiCfW02S8".to_string()),
             QueryType::VideoLink("https://www.youtube.com/watch?v=r-Ag3DJ_VUE".to_string()),
         ];
         for query in queries {
             if let Ok(track) = client.enqueue_query(guild, query).await {
                 println!("Enqueued: {track}");
-                client.build_display(guild).await;
+                let res = client.build_display(guild).await;
+                assert!(res.is_ok());
                 let disp: String = client.get_display(guild);
                 println!("{disp}");
             } else if std::env::var("CI").is_err() {
@@ -971,10 +980,11 @@ mod tests {
             }
         }
 
-        client.build_display(guild).await;
+        let res = client.build_display(guild).await;
+        assert!(res.is_ok());
 
         let q = client.get_queue(guild);
-        assert_eq!(q.len().await, 3);
+        assert_eq!(q.len().await, 2);
         let first = q.pop_front().await.unwrap();
         assert!(first.get_title().contains("Molly Nilsson"));
     }

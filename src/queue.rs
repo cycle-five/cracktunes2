@@ -68,7 +68,7 @@ impl CrackTrackQueue {
         &self,
         track: ResolvedTrack,
         pre_acquired_call: Option<&mut songbird::Call>,
-    ) {
+    ) -> ResolvedTrack {
         // Add to metadata queue
         self.push_back(track.clone()).await;
 
@@ -84,6 +84,8 @@ impl CrackTrackQueue {
             let mut call = songbird_call.lock().await;
             let _ = call.enqueue_input(input.into()).await;
         }
+
+        track
     }
 
     // Update dequeue to remove from metadata queue only
