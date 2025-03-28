@@ -4,7 +4,7 @@ use serenity::all::{async_trait, ChannelId, GuildId, Http};
 use songbird::input::YoutubeDl;
 use songbird::{Event, EventContext, EventHandler as VoiceEventHandler};
 use std::sync::{
-    atomic::{AtomicBool, AtomicUsize, Ordering},
+    atomic::{AtomicBool, AtomicUsize},
     Arc,
 };
 
@@ -192,8 +192,8 @@ impl VoiceEventHandler for ChannelDurationNotifier {
         // 2. If we are, update the last activity timestamp to the current time.
         // 3. If we are not, check if the last activity timestamp is older than the threshold.
         // 4. If it is, notify the channel and leave the voice channel.
-        let handler_lock = self.songbird.get(self.guild_id)?;
-        let handler = handler_lock.lock().await;
+        // let handler_lock = self.songbird.get(self.guild_id)?;
+        // let handler = handler_lock.lock().await;
         None
     }
 }

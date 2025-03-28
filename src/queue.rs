@@ -14,6 +14,12 @@ pub struct CrackTrackQueue {
     inner: Arc<Mutex<VecDeque<ResolvedTrack>>>,
     pub(crate) playing: Option<ResolvedTrack>,
     pub(crate) display: String,
+    // New field to reference the Songbird driver
+    songbird_call: Option<Arc<Mutex<songbird::Call>>>,
+    // New field to reference the Songbird TrackQueue
+    // songbird_queue: Option<Arc<songbird::tracks::TrackQueue>>,
+    // Reference to reqwest client for creating YoutubeDl inputs
+    req_client: Option<reqwest::Client>,
 }
 
 /// Implement [`Default`] for [`CrackTrackQueue`].
@@ -23,6 +29,8 @@ impl Default for CrackTrackQueue {
             inner: Arc::new(Mutex::new(VecDeque::new())),
             display: EMPTY_QUEUE.to_string(),
             playing: None,
+            songbird_call: None,
+            req_client: None,
         }
     }
 }
@@ -44,19 +52,47 @@ impl CrackTrackQueue {
         }
     }
 
+    // New method to set the Songbird queue reference
+    pub fn with_songbird(
+        mut self,
+        call: Arc<Mutex<songbird::Call>>,
+        req_client: reqwest::Client,
+    ) -> Self {
+        self.songbird_call = Some(call);
+        self.req_client = Some(req_client);
+        self
+    }
+
+    // Update enqueue to add to both queues
+    pub async fn enqueue(&self, track: ResolvedTrack) {
+        // Add to metadata queue
+        self.push_back(track.clone()).await;
+
+        // Add to Songbird queue if available
+        if let (Some(songbird_call), Some(req_client)) = (&self.songbird_call, &self.req_client) {
+            let input = songbird::input::YoutubeDl::new(req_client.clone(), track.get_url());
+            let mut call = songbird_call.lock().await;
+            let _ = call.enqueue_input(input.into()).await;
+        }
+    }
+
+    // Update dequeue to remove from metadata queue only
+    // (Songbird will handle its own queue)
+    pub async fn dequeue(&self) -> Option<ResolvedTrack> {
+        self.pop_front().await
+    }
+
+    // Update clear to clear both queues
+    pub async fn clear(&self) {
+        self.inner.lock().await.clear();
+        if let Some(songbird_call) = &self.songbird_call {
+            songbird_call.lock().await.stop();
+        }
+    }
+
     /// Get the queue.
     pub async fn get_queue(&self) -> VecDeque<ResolvedTrack> {
         self.inner.lock().await.clone()
-    }
-
-    /// Enqueue a track.
-    pub async fn enqueue(&self, track: ResolvedTrack) {
-        self.push_back(track).await;
-    }
-
-    /// Dequeue a track.
-    pub async fn dequeue(&self) -> Option<ResolvedTrack> {
-        self.pop_front().await
     }
 
     /// Return the display string for the queue.
@@ -82,11 +118,6 @@ impl CrackTrackQueue {
                 .join("\n")
         };
         self.display = format!("{}\n\n{}", now_playing, queued);
-    }
-
-    /// Clear the queue in place.
-    pub async fn clear(&self) {
-        self.inner.lock().await.clear();
     }
 
     /// Get the length of the queue.
