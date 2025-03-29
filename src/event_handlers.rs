@@ -1,11 +1,10 @@
-use crate::check_msg;
-use crate::Data;
-use crack_types::YoutubeDl;
+use crate::{check_msg, Data};
 use poise::serenity_prelude as serenity;
 use serenity::all::{async_trait, ChannelId, GuildId, Http};
-use songbird::{Event, EventContext, EventHandler as VoiceEventHandler, TrackEvent};
+use songbird::input::YoutubeDl;
+use songbird::{Event, EventContext, EventHandler as VoiceEventHandler};
 use std::sync::{
-    atomic::{AtomicBool, AtomicUsize, Ordering},
+    atomic::{AtomicBool, AtomicUsize},
     Arc,
 };
 
@@ -26,59 +25,32 @@ impl VoiceEventHandler for EnhancedTrackEndNotifier {
             // Check if there are more tracks in the queue
             if !queue.is_empty().await {
                 // Get the handler for this guild
-                if let Some(handler_lock) = self.data.songbird.get(self.guild_id) {
-                    let mut handler = handler_lock.lock().await;
+                // Update our metadata queue to match Songbird's state
+                // by removing the track that just ended
+                let _ = queue.dequeue().await;
 
-                    // Get the next track from our custom queue
-                    if let Some(track) = queue.dequeue().await {
-                        // Play the next track
-                        let src = songbird::input::Input::from(YoutubeDl::new(
-                            self.data.http_client.clone(),
-                            track.get_url(),
-                        ));
-
-                        let song = handler.play_input(src);
-
-                        // Update activity timestamp directly
-                        if let Some(idle_info) = self.data.idle_timeouts.get(&self.guild_id) {
-                            let current_time = idle_info
-                                .last_activity
-                                .load(std::sync::atomic::Ordering::Relaxed);
-                            idle_info
-                                .last_activity
-                                .store(current_time + 1, std::sync::atomic::Ordering::Relaxed);
-                        }
-
-                        // Add event handlers to the new track
-                        let _ = song.add_event(
-                            Event::Track(TrackEvent::End),
-                            EnhancedTrackEndNotifier {
-                                chan_id: self.chan_id,
-                                http: self.http.clone(),
-                                guild_id: self.guild_id,
-                                data: self.data.clone(),
-                                is_looping: self.is_looping.clone(),
-                            },
-                        );
-
-                        let _ = song.add_event(
-                            Event::Track(TrackEvent::Error),
-                            EnhancedTrackErrorNotifier {
-                                chan_id: self.chan_id,
-                                http: self.http.clone(),
-                                guild_id: self.guild_id,
-                                data: self.data.clone(),
-                                is_looping: self.is_looping.clone(),
-                            },
-                        );
-
+                // Check if there are more tracks in the queue
+                if !queue.is_empty().await {
+                    // Get the next track from our custom queue for display purposes
+                    if let Some(next_track) = queue.get(0).await {
                         // Notify that the next track is playing
                         check_msg(
                             self.chan_id
-                                .say(&self.http, &format!("Now playing: {}", track.get_title()))
+                                .say(
+                                    &self.http,
+                                    &format!("Now playing: {}", next_track.get_title()),
+                                )
                                 .await,
                         );
+
+                        // Update activity timestamp
+                        if let Some(idle_info) = self.data.idle_timeouts.get(&self.guild_id) {
+                            idle_info.bump_activity();
+                        }
                     }
+                } else {
+                    // Queue is empty
+                    check_msg(self.chan_id.say(&self.http, "Queue finished.").await);
                 }
             } else {
                 // Queue is empty
@@ -152,53 +124,14 @@ impl VoiceEventHandler for EnhancedTrackErrorNotifier {
 
                         if let Some(next_track) = queue.dequeue().await {
                             let src =
-                                YoutubeDl::new(self.data.http_client.clone(), next_track.get_url());
-                            // let src = match YoutubeDl::new(self.data.http_client.clone(), next_track.get_url()).into_input() {
-                            //     Ok(input) => input,
-                            //     Err(e) => {
-                            //         check_msg(
-                            //             self.chan_id
-                            //                 .say(&self.http, &format!("Error playing track \"{}\": {}", next_track.get_title(), e))
-                            //                 .await,
-                            //         );
-                            //         return None;
-                            //     }
-                            // };
+                                YoutubeDl::new(self.data.req_client.clone(), next_track.get_url());
 
-                            let song = handler.play_input(src.into());
+                            let _song = handler.play_input(src.into());
 
-                            // Update activity timestamp directly
+                            // Update activity timestamp by bumping it
                             if let Some(idle_info) = self.data.idle_timeouts.get(&self.guild_id) {
-                                let current_time = idle_info
-                                    .last_activity
-                                    .load(std::sync::atomic::Ordering::Relaxed);
-                                idle_info
-                                    .last_activity
-                                    .store(current_time + 1, std::sync::atomic::Ordering::Relaxed);
+                                idle_info.bump_activity();
                             }
-
-                            // Add the same event handlers to the new track
-                            let _ = song.add_event(
-                                Event::Track(TrackEvent::End),
-                                EnhancedTrackEndNotifier {
-                                    chan_id: self.chan_id,
-                                    http: self.http.clone(),
-                                    guild_id: self.guild_id,
-                                    data: self.data.clone(),
-                                    is_looping: self.is_looping.clone(),
-                                },
-                            );
-
-                            let _ = song.add_event(
-                                Event::Track(TrackEvent::Error),
-                                EnhancedTrackErrorNotifier {
-                                    chan_id: self.chan_id,
-                                    http: self.http.clone(),
-                                    guild_id: self.guild_id,
-                                    data: self.data.clone(),
-                                    is_looping: self.is_looping.clone(),
-                                },
-                            );
 
                             check_msg(
                                 self.chan_id
@@ -240,68 +173,28 @@ pub struct ChannelDurationNotifier {
     pub data: Arc<Data>,
 }
 
-impl ChannelDurationNotifier {
-    /// Update the last activity timestamp to the current time
-    pub fn update_activity(&self) {
-        let current_time = self.count.load(Ordering::Relaxed);
+// impl ChannelDurationNotifier {
+//     /// Update the last activity timestamp to the current time
+//     pub fn update_activity(&self) {
+//         let current_time = self.count.load(Ordering::Relaxed);
 
-        // Get or create the idle timeout info for this guild
-        let idle_info = self.data.idle_timeouts.entry(self.guild_id).or_default();
-
-        // Update the last activity timestamp
-        idle_info
-            .last_activity
-            .store(current_time, Ordering::Relaxed);
-    }
-}
+//         // Get or create the idle timeout info for this guild
+//         if let Some(idle_info) = self.data.idle_timeouts.get(&self.guild_id) {
+//             // Use the new helper method for setting activity to a specific time
+//             idle_info.set_activity_to(current_time);
+//         }
+//     }
+// }
 
 #[async_trait]
 impl VoiceEventHandler for ChannelDurationNotifier {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
-        let count_before = self.count.fetch_add(1, Ordering::Relaxed);
-        let current_time = count_before + 1; // Current time in minutes since joining
-
-        // Get the idle timeout info for this guild
-        if let Some(idle_info) = self.data.idle_timeouts.get(&self.guild_id) {
-            let timeout_minutes = idle_info.timeout_minutes.load(Ordering::Relaxed);
-
-            // Check if we should leave due to inactivity (0 means never leave)
-            if timeout_minutes > 0 {
-                let last_activity = idle_info.last_activity.load(Ordering::Relaxed);
-                let idle_time = current_time.saturating_sub(last_activity);
-
-                if idle_time >= timeout_minutes {
-                    check_msg(
-                        self.chan_id
-                            .say(
-                                &self.http,
-                                &format!(
-                                    "Leaving channel due to inactivity for {} minutes.",
-                                    idle_time
-                                ),
-                            )
-                            .await,
-                    );
-
-                    // Leave the channel
-                    let _ = self.songbird.remove(self.guild_id).await;
-                    return Some(Event::Cancel); // Cancel this event handler
-                }
-            }
-        }
-
-        check_msg(
-            self.chan_id
-                .say(
-                    &self.http,
-                    &format!(
-                        "I've been in this channel for {} minutes!",
-                        count_before + 1
-                    ),
-                )
-                .await,
-        );
-
+        // 1. Get if we are currently playing a track.
+        // 2. If we are, update the last activity timestamp to the current time.
+        // 3. If we are not, check if the last activity timestamp is older than the threshold.
+        // 4. If it is, notify the channel and leave the voice channel.
+        // let handler_lock = self.songbird.get(self.guild_id)?;
+        // let handler = handler_lock.lock().await;
         None
     }
 }

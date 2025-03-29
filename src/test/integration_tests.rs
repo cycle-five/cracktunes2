@@ -8,6 +8,7 @@ mod integration_tests {
 
     use crate::CrackTrackQueue;
     use crate::ResolvedTrack;
+    use crate::REQ_CLIENT;
     use crack_types::{QueryType, UserId};
 
     // Create mock for Context
@@ -28,7 +29,7 @@ mod integration_tests {
 
     // Helper function to create a new test queue with tracks
     async fn setup_test_queue() -> CrackTrackQueue {
-        let queue = CrackTrackQueue::new();
+        let queue = CrackTrackQueue::new(REQ_CLIENT.clone());
 
         // Add some tracks
         let track1 = ResolvedTrack::new(QueryType::VideoLink(
@@ -46,9 +47,9 @@ mod integration_tests {
         ))
         .with_user_id(UserId::new(1));
 
-        queue.enqueue(track1).await;
-        queue.enqueue(track2).await;
-        queue.enqueue(track3).await;
+        queue.enqueue(track1, None).await;
+        queue.enqueue(track2, None).await;
+        queue.enqueue(track3, None).await;
 
         queue
     }
@@ -80,7 +81,7 @@ mod integration_tests {
                     i
                 )))
                 .with_user_id(UserId::new(1));
-                queue_clone2.enqueue(track).await;
+                queue_clone2.enqueue(track, None).await;
                 tokio::time::sleep(Duration::from_millis(15)).await;
             }
             vec![]
@@ -111,7 +112,7 @@ mod integration_tests {
     #[tokio::test]
     async fn test_shuffle_keeps_all_tracks() {
         // Create a queue with a lot of tracks to make shuffle more likely to change order
-        let queue = CrackTrackQueue::new();
+        let queue = CrackTrackQueue::new(REQ_CLIENT.clone());
 
         // Add 20 tracks
         for i in 1..21 {
@@ -157,8 +158,8 @@ mod integration_tests {
         let queues = dashmap::DashMap::new();
 
         // Create queues for each guild
-        queues.insert(guild1, CrackTrackQueue::new());
-        queues.insert(guild2, CrackTrackQueue::new());
+        queues.insert(guild1, CrackTrackQueue::new(REQ_CLIENT.clone()));
+        queues.insert(guild2, CrackTrackQueue::new(REQ_CLIENT.clone()));
 
         // Add different tracks to each queue
         let queue1 = queues.get(&guild1).unwrap();
@@ -166,14 +167,14 @@ mod integration_tests {
             "https://www.youtube.com/watch?v=guild1".to_string(),
         ))
         .with_user_id(UserId::new(1));
-        queue1.enqueue(track1).await;
+        queue1.enqueue(track1, None).await;
 
         let queue2 = queues.get(&guild2).unwrap();
         let track2 = ResolvedTrack::new(QueryType::VideoLink(
             "https://www.youtube.com/watch?v=guild2".to_string(),
         ))
         .with_user_id(UserId::new(2));
-        queue2.enqueue(track2).await;
+        queue2.enqueue(track2, None).await;
 
         // Verify each queue has its own content
         assert_eq!(queue1.len().await, 1);
@@ -194,7 +195,7 @@ mod integration_tests {
     #[tokio::test]
     async fn test_queue_stress_test() {
         // Add and remove a large number of tracks to test performance and correctness
-        let queue = CrackTrackQueue::new();
+        let queue = CrackTrackQueue::new(REQ_CLIENT.clone());
 
         // Add 1000 tracks
         let start_time = std::time::Instant::now();

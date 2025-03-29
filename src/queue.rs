@@ -12,7 +12,14 @@ use tokio::sync::Mutex;
 pub struct CrackTrackQueue {
     //inner: Arc<DashMap<GuildId, VecDeque<ResolvedTrack>>>,
     inner: Arc<Mutex<VecDeque<ResolvedTrack>>>,
+    pub(crate) playing: Option<ResolvedTrack>,
     pub(crate) display: String,
+    // New field to reference the Songbird driver
+    songbird_call: Option<Arc<Mutex<songbird::Call>>>,
+    // New field to reference the Songbird TrackQueue
+    // songbird_queue: Option<Arc<songbird::tracks::TrackQueue>>,
+    // Reference to reqwest client for creating YoutubeDl inputs
+    req_client: Option<reqwest::Client>,
 }
 
 /// Implement [`Default`] for [`CrackTrackQueue`].
@@ -21,16 +28,22 @@ impl Default for CrackTrackQueue {
         CrackTrackQueue {
             inner: Arc::new(Mutex::new(VecDeque::new())),
             display: EMPTY_QUEUE.to_string(),
+            playing: None,
+            songbird_call: None,
+            req_client: None,
         }
     }
 }
 
 /// Implement [`CrackTrackQueue`].
-impl<'a> CrackTrackQueue {
+impl CrackTrackQueue {
     /// Create a new [`CrackTrackQueue`].
     #[must_use]
-    pub fn new() -> Self {
-        CrackTrackQueue::default()
+    pub fn new(req_client: reqwest::Client) -> Self {
+        CrackTrackQueue {
+            req_client: Some(req_client),
+            ..Default::default()
+        }
     }
 
     /// Create a new [`CrackTrackQueue`] with a given [`VecDeque`] of [`ResolvedTrack`].
@@ -38,23 +51,63 @@ impl<'a> CrackTrackQueue {
     pub fn with_queue(queue: VecDeque<ResolvedTrack>) -> Self {
         CrackTrackQueue {
             inner: Arc::new(Mutex::new(queue)),
-            display: EMPTY_QUEUE.to_string(),
+            ..Default::default()
+        }
+    }
+
+    // New method to set the Songbird queue reference
+    pub fn with_songbird(
+        mut self,
+        call: Arc<Mutex<songbird::Call>>,
+        req_client: reqwest::Client,
+    ) -> Self {
+        self.songbird_call = Some(call);
+        self.req_client = Some(req_client);
+        self
+    }
+
+    // Update enqueue to add to both queues
+    pub async fn enqueue(
+        &self,
+        track: ResolvedTrack,
+        pre_acquired_call: Option<&mut songbird::Call>,
+    ) -> ResolvedTrack {
+        // Add to metadata queue
+        self.push_back(track.clone()).await;
+
+        // If we have a pre-acquired call, use it; otherwise acquire our own lock
+        if let Some(call) = pre_acquired_call {
+            let input =
+                songbird::input::YoutubeDl::new(self.req_client.clone().unwrap(), track.get_url());
+            let _ = call.enqueue_input(input.into()).await;
+        } else if let (Some(songbird_call), Some(req_client)) =
+            (&self.songbird_call, &self.req_client)
+        {
+            let input = songbird::input::YoutubeDl::new(req_client.clone(), track.get_url());
+            let mut call = songbird_call.lock().await;
+            let _ = call.enqueue_input(input.into()).await;
+        }
+
+        track
+    }
+
+    // Update dequeue to remove from metadata queue only
+    // (Songbird will handle its own queue)
+    pub async fn dequeue(&self) -> Option<ResolvedTrack> {
+        self.pop_front().await
+    }
+
+    // Update clear to clear both queues
+    pub async fn clear(&self) {
+        self.inner.lock().await.clear();
+        if let Some(songbird_call) = &self.songbird_call {
+            songbird_call.lock().await.stop();
         }
     }
 
     /// Get the queue.
     pub async fn get_queue(&self) -> VecDeque<ResolvedTrack> {
         self.inner.lock().await.clone()
-    }
-
-    /// Enqueue a track.
-    pub async fn enqueue(&self, track: ResolvedTrack) {
-        self.push_back(track).await;
-    }
-
-    /// Dequeue a track.
-    pub async fn dequeue(&self) -> Option<ResolvedTrack> {
-        self.pop_front().await
     }
 
     /// Return the display string for the queue.
@@ -65,11 +118,13 @@ impl<'a> CrackTrackQueue {
 
     /// Build the display string for the queue.
     /// This *must* be called before displaying the queue.
-    ///
-    /// # Errors
-    /// Returns an error if the display string cannot be built.
     pub async fn build_display(&mut self) {
-        self.display = {
+        let now_playing = if let Some(track) = &self.playing {
+            format!("Now Playing: {}", track)
+        } else {
+            "Nothing is currently playing.".to_string()
+        };
+        let queued = {
             let queue = self.inner.lock().await.clone();
             queue
                 .iter()
@@ -77,11 +132,7 @@ impl<'a> CrackTrackQueue {
                 .collect::<Vec<String>>()
                 .join("\n")
         };
-    }
-
-    /// Clear the queue in place.
-    pub async fn clear(&self) {
-        self.inner.lock().await.clear();
+        self.display = format!("{}\n\n{}", now_playing, queued);
     }
 
     /// Get the length of the queue.

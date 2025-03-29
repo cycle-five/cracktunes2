@@ -4,7 +4,7 @@ mod queue_tests {
 
     use tokio;
 
-    use crate::{CrackTrackQueue, ResolvedTrack, EMPTY_QUEUE};
+    use crate::{CrackTrackQueue, ResolvedTrack, EMPTY_QUEUE, REQ_CLIENT};
     use crack_types::{QueryType, UserId};
 
     // Helper function to create a test track
@@ -18,7 +18,7 @@ mod queue_tests {
 
     #[tokio::test]
     async fn test_queue_empty() {
-        let queue = CrackTrackQueue::new();
+        let queue = CrackTrackQueue::new(REQ_CLIENT.clone());
         assert!(queue.is_empty().await);
         assert_eq!(queue.len().await, 0);
         assert!(queue.dequeue().await.is_none());
@@ -26,17 +26,17 @@ mod queue_tests {
 
     #[tokio::test]
     async fn test_queue_enqueue_dequeue() {
-        let queue = CrackTrackQueue::new();
+        let queue = CrackTrackQueue::new(REQ_CLIENT.clone());
 
         // Add tracks
         let track1 = create_test_track("1");
         let track2 = create_test_track("2");
 
-        queue.enqueue(track1.clone()).await;
+        queue.enqueue(track1.clone(), None).await;
         assert_eq!(queue.len().await, 1);
         assert!(!queue.is_empty().await);
 
-        queue.enqueue(track2.clone()).await;
+        queue.enqueue(track2.clone(), None).await;
         assert_eq!(queue.len().await, 2);
 
         // Dequeue tracks (FIFO order)
@@ -52,12 +52,12 @@ mod queue_tests {
 
     #[tokio::test]
     async fn test_queue_clear() {
-        let queue = CrackTrackQueue::new();
+        let queue = CrackTrackQueue::new(REQ_CLIENT.clone());
 
         // Add tracks
-        queue.enqueue(create_test_track("1")).await;
-        queue.enqueue(create_test_track("2")).await;
-        queue.enqueue(create_test_track("3")).await;
+        queue.enqueue(create_test_track("1"), None).await;
+        queue.enqueue(create_test_track("2"), None).await;
+        queue.enqueue(create_test_track("3"), None).await;
 
         assert_eq!(queue.len().await, 3);
 
@@ -69,16 +69,16 @@ mod queue_tests {
 
     #[tokio::test]
     async fn test_queue_get_remove() {
-        let queue = CrackTrackQueue::new();
+        let queue = CrackTrackQueue::new(REQ_CLIENT.clone());
 
         // Add tracks
         let track1 = create_test_track("1");
         let track2 = create_test_track("2");
         let track3 = create_test_track("3");
 
-        queue.enqueue(track1.clone()).await;
-        queue.enqueue(track2.clone()).await;
-        queue.enqueue(track3.clone()).await;
+        queue.enqueue(track1.clone(), None).await;
+        queue.enqueue(track2.clone(), None).await;
+        queue.enqueue(track3.clone(), None).await;
 
         // Get track at index
         let get_track2 = queue.get(1).await.unwrap();
@@ -97,7 +97,7 @@ mod queue_tests {
 
     #[tokio::test]
     async fn test_queue_push_pop_front_back() {
-        let queue = CrackTrackQueue::new();
+        let queue = CrackTrackQueue::new(REQ_CLIENT.clone());
 
         let track1 = create_test_track("1");
         let track2 = create_test_track("2");
@@ -125,11 +125,11 @@ mod queue_tests {
 
     #[tokio::test]
     async fn test_queue_insert() {
-        let queue = CrackTrackQueue::new();
+        let queue = CrackTrackQueue::new(REQ_CLIENT.clone());
 
         // Add tracks
-        queue.enqueue(create_test_track("1")).await;
-        queue.enqueue(create_test_track("3")).await;
+        queue.enqueue(create_test_track("1"), None).await;
+        queue.enqueue(create_test_track("3"), None).await;
 
         // Insert in the middle
         let track2 = create_test_track("2");
@@ -152,11 +152,11 @@ mod queue_tests {
 
     #[tokio::test]
     async fn test_queue_append() {
-        let queue = CrackTrackQueue::new();
+        let queue = CrackTrackQueue::new(REQ_CLIENT.clone());
 
         // Add initial tracks
-        queue.enqueue(create_test_track("1")).await;
-        queue.enqueue(create_test_track("2")).await;
+        queue.enqueue(create_test_track("1"), None).await;
+        queue.enqueue(create_test_track("2"), None).await;
 
         // Create a vector of tracks to append
         let tracks = vec![create_test_track("3"), create_test_track("4")];
@@ -196,11 +196,11 @@ mod queue_tests {
 
     #[tokio::test]
     async fn test_queue_shuffle() {
-        let queue = CrackTrackQueue::new();
+        let queue = CrackTrackQueue::new(REQ_CLIENT.clone());
 
         // Add a bunch of tracks
         for i in 1..11 {
-            queue.enqueue(create_test_track(&i.to_string())).await;
+            queue.enqueue(create_test_track(&i.to_string()), None).await;
         }
 
         // Get the original order
@@ -246,15 +246,13 @@ mod queue_tests {
 
     #[tokio::test]
     async fn test_queue_display() {
-        let mut queue = CrackTrackQueue::new();
+        let mut queue = CrackTrackQueue::new(REQ_CLIENT.clone());
 
-        // Initially display should be None/empty
-        assert_eq!(queue.display, EMPTY_QUEUE);
-        assert_eq!(queue.get_display(), "");
+        assert_eq!(queue.get_display(), EMPTY_QUEUE);
 
         // Add tracks
-        queue.enqueue(create_test_track("1")).await;
-        queue.enqueue(create_test_track("2")).await;
+        queue.enqueue(create_test_track("1"), None).await;
+        queue.enqueue(create_test_track("2"), None).await;
 
         // Display still empty until built
         assert_eq!(queue.display, EMPTY_QUEUE);
@@ -272,11 +270,11 @@ mod queue_tests {
 
     #[tokio::test]
     async fn test_queue_clone() {
-        let queue = CrackTrackQueue::new();
+        let queue = CrackTrackQueue::new(REQ_CLIENT.clone());
 
         // Add tracks
-        queue.enqueue(create_test_track("1")).await;
-        queue.enqueue(create_test_track("2")).await;
+        queue.enqueue(create_test_track("1"), None).await;
+        queue.enqueue(create_test_track("2"), None).await;
 
         // Clone the queue
         let queue_clone = queue.clone();
@@ -285,7 +283,7 @@ mod queue_tests {
         assert_eq!(queue.len().await, queue_clone.len().await);
 
         // Modifying one *should* affect the other
-        queue.enqueue(create_test_track("3")).await;
+        queue.enqueue(create_test_track("3"), None).await;
         assert_eq!(queue.len().await, 3);
         assert_eq!(queue_clone.len().await, 3);
 

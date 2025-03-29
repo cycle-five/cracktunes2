@@ -16,20 +16,20 @@ RUN apt-get update && \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy the Cargo files first to leverage Docker caching
-COPY Cargo.toml ./
-COPY Cargo.lock ./
+COPY Cargo.toml /app/
+COPY Cargo.lock /app/
 
 # Create a dummy main.rs to build dependencies
 RUN mkdir -p src && \
     echo "fn main() {}" > src/main.rs && \
-    cargo build --release && \
+    cargo build --release --locked && \
     rm -rf src
 
 # Copy the actual source code
 COPY . .
 
 # Build the application
-RUN cargo build --release
+RUN cargo build --release --locked
 
 # Create a smaller runtime image
 FROM debian:bookworm-slim
@@ -46,7 +46,7 @@ RUN apt-get update && \
 WORKDIR /app
 
 # Copy the binary from the builder stage
-COPY --from=builder /usr/src/cracktunes/target/release/cracktunes /app/
+COPY --from=builder /app/target/release/cracktunes /app/
 
 # Set the entrypoint
 ENTRYPOINT ["/app/cracktunes"]
