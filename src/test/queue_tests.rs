@@ -4,7 +4,7 @@ mod queue_tests {
 
     use tokio;
 
-    use crate::{CrackTrackQueue, ResolvedTrack, EMPTY_QUEUE};
+    use crate::{CrackTrackQueue, ResolvedTrack, EMPTY_QUEUE, REQ_CLIENT};
     use crack_types::{QueryType, UserId};
 
     // Helper function to create a test track
@@ -18,7 +18,7 @@ mod queue_tests {
 
     #[tokio::test]
     async fn test_queue_empty() {
-        let queue = CrackTrackQueue::new();
+        let queue = CrackTrackQueue::new(REQ_CLIENT.clone());
         assert!(queue.is_empty().await);
         assert_eq!(queue.len().await, 0);
         assert!(queue.dequeue().await.is_none());
@@ -26,7 +26,7 @@ mod queue_tests {
 
     #[tokio::test]
     async fn test_queue_enqueue_dequeue() {
-        let queue = CrackTrackQueue::new();
+        let queue = CrackTrackQueue::new(REQ_CLIENT.clone());
 
         // Add tracks
         let track1 = create_test_track("1");
@@ -52,7 +52,7 @@ mod queue_tests {
 
     #[tokio::test]
     async fn test_queue_clear() {
-        let queue = CrackTrackQueue::new();
+        let queue = CrackTrackQueue::new(REQ_CLIENT.clone());
 
         // Add tracks
         queue.enqueue(create_test_track("1"), None).await;
@@ -69,7 +69,7 @@ mod queue_tests {
 
     #[tokio::test]
     async fn test_queue_get_remove() {
-        let queue = CrackTrackQueue::new();
+        let queue = CrackTrackQueue::new(REQ_CLIENT.clone());
 
         // Add tracks
         let track1 = create_test_track("1");
@@ -97,7 +97,7 @@ mod queue_tests {
 
     #[tokio::test]
     async fn test_queue_push_pop_front_back() {
-        let queue = CrackTrackQueue::new();
+        let queue = CrackTrackQueue::new(REQ_CLIENT.clone());
 
         let track1 = create_test_track("1");
         let track2 = create_test_track("2");
@@ -125,7 +125,7 @@ mod queue_tests {
 
     #[tokio::test]
     async fn test_queue_insert() {
-        let queue = CrackTrackQueue::new();
+        let queue = CrackTrackQueue::new(REQ_CLIENT.clone());
 
         // Add tracks
         queue.enqueue(create_test_track("1"), None).await;
@@ -152,7 +152,7 @@ mod queue_tests {
 
     #[tokio::test]
     async fn test_queue_append() {
-        let queue = CrackTrackQueue::new();
+        let queue = CrackTrackQueue::new(REQ_CLIENT.clone());
 
         // Add initial tracks
         queue.enqueue(create_test_track("1"), None).await;
@@ -196,7 +196,7 @@ mod queue_tests {
 
     #[tokio::test]
     async fn test_queue_shuffle() {
-        let queue = CrackTrackQueue::new();
+        let queue = CrackTrackQueue::new(REQ_CLIENT.clone());
 
         // Add a bunch of tracks
         for i in 1..11 {
@@ -246,7 +246,7 @@ mod queue_tests {
 
     #[tokio::test]
     async fn test_queue_display() {
-        let mut queue = CrackTrackQueue::new();
+        let mut queue = CrackTrackQueue::new(REQ_CLIENT.clone());
 
         assert_eq!(queue.get_display(), EMPTY_QUEUE);
 
@@ -270,7 +270,7 @@ mod queue_tests {
 
     #[tokio::test]
     async fn test_queue_clone() {
-        let queue = CrackTrackQueue::new();
+        let queue = CrackTrackQueue::new(REQ_CLIENT.clone());
 
         // Add tracks
         queue.enqueue(create_test_track("1"), None).await;

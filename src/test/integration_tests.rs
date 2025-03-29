@@ -8,6 +8,7 @@ mod integration_tests {
 
     use crate::CrackTrackQueue;
     use crate::ResolvedTrack;
+    use crate::REQ_CLIENT;
     use crack_types::{QueryType, UserId};
 
     // Create mock for Context
@@ -28,7 +29,7 @@ mod integration_tests {
 
     // Helper function to create a new test queue with tracks
     async fn setup_test_queue() -> CrackTrackQueue {
-        let queue = CrackTrackQueue::new();
+        let queue = CrackTrackQueue::new(REQ_CLIENT.clone());
 
         // Add some tracks
         let track1 = ResolvedTrack::new(QueryType::VideoLink(
@@ -111,7 +112,7 @@ mod integration_tests {
     #[tokio::test]
     async fn test_shuffle_keeps_all_tracks() {
         // Create a queue with a lot of tracks to make shuffle more likely to change order
-        let queue = CrackTrackQueue::new();
+        let queue = CrackTrackQueue::new(REQ_CLIENT.clone());
 
         // Add 20 tracks
         for i in 1..21 {
@@ -157,8 +158,8 @@ mod integration_tests {
         let queues = dashmap::DashMap::new();
 
         // Create queues for each guild
-        queues.insert(guild1, CrackTrackQueue::new());
-        queues.insert(guild2, CrackTrackQueue::new());
+        queues.insert(guild1, CrackTrackQueue::new(REQ_CLIENT.clone()));
+        queues.insert(guild2, CrackTrackQueue::new(REQ_CLIENT.clone()));
 
         // Add different tracks to each queue
         let queue1 = queues.get(&guild1).unwrap();
@@ -194,7 +195,7 @@ mod integration_tests {
     #[tokio::test]
     async fn test_queue_stress_test() {
         // Add and remove a large number of tracks to test performance and correctness
-        let queue = CrackTrackQueue::new();
+        let queue = CrackTrackQueue::new(REQ_CLIENT.clone());
 
         // Add 1000 tracks
         let start_time = std::time::Instant::now();

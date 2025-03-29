@@ -596,7 +596,8 @@ impl CrackTrackClient {
         if let Some(q) = self.guild_queues.get(&guild) {
             q.clone()
         } else {
-            let q: &mut CrackTrackQueue = Box::leak(Box::new(CrackTrackQueue::new()));
+            let q: &mut CrackTrackQueue =
+                Box::leak(Box::new(CrackTrackQueue::new(self.req_client.clone())));
             self.guild_queues.insert(guild, q.clone());
             q.clone()
         }

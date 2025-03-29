@@ -39,8 +39,11 @@ impl Default for CrackTrackQueue {
 impl CrackTrackQueue {
     /// Create a new [`CrackTrackQueue`].
     #[must_use]
-    pub fn new() -> Self {
-        CrackTrackQueue::default()
+    pub fn new(req_client: reqwest::Client) -> Self {
+        CrackTrackQueue {
+            req_client: Some(req_client),
+            ..Default::default()
+        }
     }
 
     /// Create a new [`CrackTrackQueue`] with a given [`VecDeque`] of [`ResolvedTrack`].
