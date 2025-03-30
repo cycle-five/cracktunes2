@@ -246,6 +246,9 @@ async fn play_url(
     ctx: Context<'_>,
     #[description = "URL to a video or audio"] url: String,
 ) -> Result<(), serenity::Error> {
+    // Immediately acknowledge the interaction to prevent timeout
+    ctx.defer().await?;
+
     if !url.starts_with("http") {
         ctx.say("Must provide a valid URL").await?;
         return Ok(());
@@ -282,6 +285,9 @@ async fn queue(
     ctx: Context<'_>,
     #[description = "URL to a video or audio"] url: String,
 ) -> Result<(), serenity::Error> {
+    // Immediately acknowledge the interaction to prevent timeout
+    ctx.defer().await?;
+
     if !url.starts_with("http") {
         ctx.say("Must provide a valid URL").await?;
         return Ok(());
@@ -326,6 +332,9 @@ async fn queue(
 /// Skips the current song
 #[poise::command(slash_command, prefix_command, guild_only)]
 async fn skip(ctx: Context<'_>) -> Result<(), serenity::Error> {
+    // Immediately acknowledge the interaction to prevent timeout
+    ctx.defer().await?;
+
     let guild_id = ctx.guild_id().unwrap();
     let manager = ctx.data().songbird.clone();
 
@@ -355,6 +364,9 @@ async fn skip(ctx: Context<'_>) -> Result<(), serenity::Error> {
 /// Stops playback and clears the queue
 #[poise::command(slash_command, prefix_command, guild_only)]
 async fn stop(ctx: Context<'_>) -> Result<(), serenity::Error> {
+    // Immediately acknowledge the interaction to prevent timeout
+    ctx.defer().await?;
+
     let guild_id = ctx.guild_id().unwrap();
     let manager = ctx.data().songbird.clone();
 
@@ -383,6 +395,9 @@ async fn stop(ctx: Context<'_>) -> Result<(), serenity::Error> {
 /// Displays the current queue
 #[poise::command(slash_command, prefix_command, guild_only)]
 async fn show_queue(ctx: Context<'_>) -> Result<(), serenity::Error> {
+    // Immediately acknowledge the interaction to prevent timeout
+    ctx.defer().await?;
+
     let custom_queue = get_queue(ctx).await.map_err(|e| {
         println!("Error getting queue: {}", e);
         CrackedError::from("Failed to get queue")
@@ -405,6 +420,9 @@ async fn show_queue(ctx: Context<'_>) -> Result<(), serenity::Error> {
 /// Shuffles the queue
 #[poise::command(slash_command, prefix_command, guild_only)]
 async fn shuffle(ctx: Context<'_>) -> Result<(), serenity::Error> {
+    // Immediately acknowledge the interaction to prevent timeout
+    ctx.defer().await?;
+
     let guild_id = ctx.guild_id().unwrap();
     let manager = ctx.data().songbird.clone();
 
