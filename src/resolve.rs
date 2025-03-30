@@ -3,7 +3,7 @@ use crack_types::{get_human_readable_timestamp, QueryType};
 use regex::Regex;
 use rusty_ytdl::{search, VideoDetails};
 use serenity::all::{AutocompleteChoice, UserId};
-use songbird::input::AuxMetadata;
+use songbird::{input::AuxMetadata, tracks::TrackHandle};
 use std::{
     borrow::Cow,
     fmt::{self, Display, Formatter},

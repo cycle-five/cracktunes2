@@ -2,6 +2,7 @@ use crate::ResolvedTrack;
 use crate::EMPTY_QUEUE;
 
 use rand::seq::SliceRandom;
+use serenity::all::GuildId;
 use std::collections::VecDeque;
 use std::fmt::{self, Display, Formatter};
 use std::sync::Arc;
