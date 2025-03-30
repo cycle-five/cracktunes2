@@ -651,7 +651,7 @@ impl CrackTrackClient {
                 return Err(Error::from("Queue not found"));
             }
         }
-        return Ok(());
+        Ok(())
     }
 
     /// Get the display string for the queue.
