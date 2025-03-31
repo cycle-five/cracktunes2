@@ -26,6 +26,8 @@ pub const ERROR_LOG_FILE: &str = "errors";
 /// Initialize the logging system with console and file outputs
 /// # Errors
 /// Returns an error if the log directory cannot be created or if the file appender fails to initialize.
+/// # Panics
+/// Panics if the directive parsing fails (never happens).
 pub fn init() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Create log directory if it doesn't exist
     if !Path::new(LOG_DIR).exists() {
@@ -151,7 +153,7 @@ pub fn log_command_end(ctx: Context<'_, Data, serenity::Error>) {
         .map_or_else(|| "DM".to_string(), |id| id.get().to_string());
     let user_id = ctx.author().id.get().to_string();
 
-    let duration_ms = duration.map_or(0, |d| d.as_millis()) as u64;
+    let duration_ms = u64::try_from(duration.map_or(0, |d| d.as_millis())).unwrap_or_default();
     info!(
         target: "cracktunes::command",
         command = %command_name,
@@ -170,7 +172,8 @@ pub fn log_command_error(error: &FrameworkError<'_, Data, serenity::Error>) {
             let command_name = ctx.command().qualified_name.clone();
             let guild_id = ctx
                 .guild_id()
-                .map_or_else(|| "DM".to_string(), |id| id.get().to_string());
+                .as_ref()
+                .map_or_else(|| "DM".to_string(), ToString::to_string);
             let user_id = ctx.author().id.get().to_string();
 
             error!(
@@ -186,12 +189,13 @@ pub fn log_command_error(error: &FrameworkError<'_, Data, serenity::Error>) {
             let command_name = ctx.command().qualified_name.clone();
             let guild_id = ctx
                 .guild_id()
-                .map_or_else(|| "DM".to_string(), |id| id.get().to_string());
+                .as_ref()
+                .map_or_else(|| "DM".to_string(), ToString::to_string);
             let user_id = ctx.author().id.get().to_string();
 
             let error_msg = error
                 .as_ref()
-                .map_or_else(|| "Check failed".to_string(), |e| e.to_string());
+                .map_or_else(|| "Check failed".to_string(), ToString::to_string);
 
             error!(
                 target: "cracktunes::error",

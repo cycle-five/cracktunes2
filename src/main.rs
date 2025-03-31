@@ -6,6 +6,7 @@ use std::{
 
 use ::serenity::all::Token;
 use cracktunes::{get_reqwest_client, get_youtube_client, Connection, CrackData};
+use dashmap::DashMap;
 use poise::serenity_prelude as serenity;
 use rand::seq::SliceRandom;
 use serenity::{
@@ -147,7 +148,7 @@ async fn join(ctx: Context<'_>) -> Result<(), serenity::Error> {
         // Create the channel duration notifier
         let notifier = ChannelDurationNotifier {
             chan_id,
-            count: Default::default(),
+            count: Arc::default(),
             http: send_http,
             guild_id,
             songbird: ctx.data().songbird.clone(),
@@ -174,7 +175,7 @@ async fn leave(ctx: Context<'_>) -> Result<(), serenity::Error> {
         handle_lock.lock().await.remove_all_global_events();
 
         if let Err(e) = manager.remove(guild_id).await {
-            ctx.say(format!("Failed: {:?}", e)).await?;
+            ctx.say(format!("Failed: {e:?}")).await?;
         } else {
             ctx.say("Left voice channel").await?;
         }
@@ -228,7 +229,7 @@ async fn play(
         let state = match x.get_info().await {
             Ok(state) => format!("{:?}", state.playing),
             Err(e) => {
-                format!("Failed to play: {:?}", e)
+                format!("Failed to play: {e:?}")
             }
         };
 
@@ -270,7 +271,7 @@ async fn skip(ctx: Context<'_>) -> Result<(), serenity::Error> {
 
         let len = handler.queue().len();
 
-        ctx.say(format!("Song skipped: {} in queue.", len)).await?;
+        ctx.say(format!("Song skipped: {len} in queue.")).await?;
     } else {
         ctx.say("Not in a voice channel to play in").await?;
     }
@@ -354,7 +355,7 @@ async fn mute(ctx: Context<'_>) -> Result<(), serenity::Error> {
         if handler.is_mute() {
             ctx.say("Already muted").await?;
         } else if let Err(e) = handler.mute(true).await {
-            ctx.say(format!("Failed: {:?}", e)).await?;
+            ctx.say(format!("Failed: {e:?}")).await?;
         } else {
             ctx.say("Now muted").await?;
         }
@@ -374,7 +375,7 @@ async fn unmute(ctx: Context<'_>) -> Result<(), serenity::Error> {
     if let Some(handler_lock) = manager.get(guild_id) {
         let mut handler = handler_lock.lock().await;
         if let Err(e) = handler.mute(false).await {
-            ctx.say(format!("Failed: {:?}", e)).await?;
+            ctx.say(format!("Failed: {e:?}")).await?;
         } else {
             ctx.say("Unmuted").await?;
         }
@@ -397,7 +398,7 @@ async fn deafen(ctx: Context<'_>) -> Result<(), serenity::Error> {
         if handler.is_deaf() {
             ctx.say("Already deafened").await?;
         } else if let Err(e) = handler.deafen(true).await {
-            ctx.say(format!("Failed: {:?}", e)).await?;
+            ctx.say(format!("Failed: {e:?}")).await?;
         } else {
             ctx.say("Deafened").await?;
         }
@@ -437,7 +438,7 @@ async fn set_idle_timeout(
         ctx.say("Idle timeout disabled. Bot will not automatically leave the channel.")
             .await?;
     } else {
-        ctx.say(format!("Idle timeout set to {} minutes.", minutes))
+        ctx.say(format!("Idle timeout set to {minutes} minutes."))
             .await?;
     }
 
@@ -453,7 +454,7 @@ async fn undeafen(ctx: Context<'_>) -> Result<(), serenity::Error> {
     if let Some(handler_lock) = manager.get(guild_id) {
         let mut handler = handler_lock.lock().await;
         if let Err(e) = handler.deafen(false).await {
-            ctx.say(format!("Failed: {:?}", e)).await?;
+            ctx.say(format!("Failed: {e:?}")).await?;
         } else {
             ctx.say("Undeafened").await?;
         }
@@ -483,11 +484,12 @@ fn get_commands() -> Vec<poise::Command<Data, serenity::Error>> {
     ]
 }
 
+#[allow(clippy::too_many_lines)]
 #[tokio::main]
 async fn main() {
     // Initialize the enhanced logging system
     if let Err(e) = cracktunes::logging::init() {
-        eprintln!("Failed to initialize logging: {}", e);
+        eprintln!("Failed to initialize logging: {e}");
     }
 
     // Configure the client with your Discord bot token in the environment.
@@ -506,7 +508,7 @@ async fn main() {
         req_client,
         yt_client,
         songbird: manager_clone,
-        idle_timeouts: Default::default(),
+        idle_timeouts: DashMap::default(),
     });
 
     // Set up the poise framework with command hooks for logging
@@ -538,18 +540,19 @@ async fn main() {
                     // Still handle the error for user feedback
                     match error {
                         poise::FrameworkError::Command { error, ctx, .. } => {
-                            error!("Error in command `{}`: {:?}", ctx.command().name, error);
+                            let cmd_name = &ctx.command().name;
+                            error!("Error in command `{cmd_name}`: {error:?}");
 
-                            if let Err(e) = ctx.say(format!("An error occurred: {}", error)).await {
-                                error!("Error while sending error message: {:?}", e);
+                            if let Err(e) = ctx.say(format!("An error occurred: {error}")).await {
+                                error!("Error while sending error message: {e:?}");
                             }
                         }
                         poise::FrameworkError::CommandCheckFailed { error, ctx, .. } => {
-                            error!("Command check failed: {:?}", error);
+                            error!("Command check failed: {error:?}");
 
                             if let Some(error) = error {
                                 if let Err(e) =
-                                    ctx.say(format!("Command check failed: {}", error)).await
+                                    ctx.say(format!("Command check failed: {error}")).await
                                 {
                                     error!("Error while sending check failure message: {:?}", e);
                                 }
@@ -580,17 +583,14 @@ async fn main() {
         .await
         .expect("Error creating client");
 
-    // let shard_manager = Arc::new(client.shard_manager);
-
     tokio::spawn(async move {
         info!("Starting client");
         let _ = client
             .start_autosharded()
             .await
-            .map_err(|why| println!("Client ended: {:?}", why));
+            .map_err(|why| println!("Client ended: {why:?}"));
     });
 
-    // let data2 = client.data.clone();
     tokio::spawn(async move {
         #[cfg(unix)]
         {
@@ -622,8 +622,6 @@ async fn main() {
         }
 
         info!("Received shutdown signal");
-        // shard_manager.shutdown_all()
-        // Do we need to do anything else to shutdown cleanly?
         exit(0);
     });
 }
