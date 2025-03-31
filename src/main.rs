@@ -357,7 +357,7 @@ async fn shuffle(ctx: Context<'_>) -> Result<(), serenity::Error> {
     if let Some(handler_lock) = manager.get(guild_id) {
         let handler = handler_lock.lock().await;
 
-        let _ = handler.queue().current_queue().shuffle(&mut rand::rng());
+        handler.queue().current_queue().shuffle(&mut rand::rng());
 
         ctx.say("Queue shuffled!").await?;
     } else {
