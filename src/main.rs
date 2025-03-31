@@ -516,13 +516,13 @@ async fn main() {
             // Add pre-command hook for logging command start
             pre_command: |ctx| {
                 Box::pin(async move {
-                    cracktunes::logging::log_command_start(ctx).await;
+                    cracktunes::logging::log_command_start(ctx);
                 })
             },
             // Add post-command hook for logging command end
             post_command: |ctx| {
                 Box::pin(async move {
-                    cracktunes::logging::log_command_end(ctx).await;
+                    cracktunes::logging::log_command_end(ctx);
                 })
             },
             // Maybe one day
@@ -533,7 +533,7 @@ async fn main() {
             on_error: |error| {
                 Box::pin(async move {
                     // Log the error using our logging system
-                    cracktunes::logging::log_command_error(&error).await;
+                    cracktunes::logging::log_command_error(&error);
 
                     // Still handle the error for user feedback
                     match error {

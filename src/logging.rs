@@ -107,7 +107,7 @@ thread_local! {
 }
 
 /// Log the start of a command execution (pre-command hook)
-pub async fn log_command_start(ctx: Context<'_, Data, serenity::Error>) {
+pub fn log_command_start(ctx: Context<'_, Data, serenity::Error>) {
     // Store the start time for later use in post_command
     COMMAND_START_TIME.with(|cell| {
         *cell.borrow_mut() = Some(Instant::now());
@@ -116,8 +116,7 @@ pub async fn log_command_start(ctx: Context<'_, Data, serenity::Error>) {
     let command_name = ctx.command().qualified_name.clone();
     let guild_id = ctx
         .guild_id()
-        .map(|id| id.get().to_string())
-        .unwrap_or_else(|| "DM".to_string());
+        .map_or_else(|| "DM".to_string(), |id| id.get().to_string());
     let user_id = ctx.author().id.get().to_string();
 
     // Attempt to format arguments
@@ -141,7 +140,7 @@ pub async fn log_command_start(ctx: Context<'_, Data, serenity::Error>) {
 }
 
 /// Log the end of a command execution (post-command hook)
-pub async fn log_command_end(ctx: Context<'_, Data, serenity::Error>) {
+pub fn log_command_end(ctx: Context<'_, Data, serenity::Error>) {
     // Calculate execution time
     let duration =
         COMMAND_START_TIME.with(|cell| cell.borrow_mut().take().map(|start| start.elapsed()));
@@ -152,26 +151,26 @@ pub async fn log_command_end(ctx: Context<'_, Data, serenity::Error>) {
         .map_or_else(|| "DM".to_string(), |id| id.get().to_string());
     let user_id = ctx.author().id.get().to_string();
 
+    let duration_ms = duration.map_or(0, |d| d.as_millis()) as u64;
     info!(
         target: "cracktunes::command",
         command = %command_name,
         guild_id = %guild_id,
         user_id = %user_id,
-        duration_ms = duration.map_or(0, |d| d.as_millis() as u64),
+        duration_ms = duration_ms,
         event = "end",
         "Command execution completed"
     );
 }
 
 /// Log errors that occur during command execution
-pub async fn log_command_error(error: &FrameworkError<'_, Data, serenity::Error>) {
+pub fn log_command_error(error: &FrameworkError<'_, Data, serenity::Error>) {
     match error {
         FrameworkError::Command { error, ctx, .. } => {
             let command_name = ctx.command().qualified_name.clone();
             let guild_id = ctx
                 .guild_id()
-                .map(|id| id.get().to_string())
-                .unwrap_or_else(|| "DM".to_string());
+                .map_or_else(|| "DM".to_string(), |id| id.get().to_string());
             let user_id = ctx.author().id.get().to_string();
 
             error!(
@@ -215,7 +214,7 @@ pub async fn log_command_error(error: &FrameworkError<'_, Data, serenity::Error>
 }
 
 /// Log a track play event
-pub async fn log_track_play(
+pub fn log_track_play(
     guild_id: serenity::all::GuildId,
     user_id: serenity::all::UserId,
     channel_id: serenity::all::ChannelId,

@@ -26,6 +26,7 @@ use rusty_ytdl::{search, search::YouTube};
 use songbird::input::AuxMetadata;
 use std::sync::atomic::AtomicUsize;
 use std::sync::LazyLock;
+use tracing::error;
 //------------------------------------
 // Standard library imports
 //------------------------------------
@@ -237,7 +238,7 @@ pub async fn suggestion_yt(client: YouTube, query: &str) -> Result<Vec<String>, 
 
 pub fn check_msg(result: serenity::Result<serenity::all::Message>) {
     if let Err(why) = result {
-        println!("Error sending message: {:?}", why);
+        error!("Error sending message: {why:?}");
     }
 }
 
