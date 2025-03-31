@@ -23,6 +23,7 @@ use crack_types::{Error, QueryType};
 use clap::{Parser, Subcommand};
 use rusty_ytdl::RequestOptions;
 use rusty_ytdl::{search, search::YouTube};
+use songbird::input::AuxMetadata;
 use std::sync::atomic::AtomicUsize;
 use std::sync::LazyLock;
 //------------------------------------
@@ -149,6 +150,17 @@ impl fmt::Debug for IdleTimeoutInfo {
             .finish()
     }
 }
+
+/// Struct to hold the metadata we additionally want to track for each track.
+#[derive(Clone)]
+pub struct TrackMetadata {
+    pub requesting_user: String,
+    pub requesting_user_id: String,
+    pub metadata: AuxMetadata,
+}
+
+unsafe impl Send for TrackMetadata {}
+unsafe impl Sync for TrackMetadata {}
 
 /// Client for resolving tracks and managing queues. Also holds other clients like
 /// reqwest, `rusty_ytdl`, and songbird.

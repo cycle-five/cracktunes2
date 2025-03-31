@@ -58,7 +58,11 @@ tracing-subscriber = { version = "0.3", features = [
 ], optional = true }
 tracing-appender = { version = "0.2", optional = true }
 url = ">=2.5.4"
-tokio = { version = "1.44.1", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.44.1", features = [
+    "signal",
+    "macros",
+    "rt-multi-thread",
+] }
 
 [dependencies.serenity]
 #version = "0.12.4"

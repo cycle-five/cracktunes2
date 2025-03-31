@@ -1,9 +1,5 @@
-//! Example demonstrating how to make use of individual track audio events,
-//! and how to use the custom `CrackTrackQueue` system with poise.
-//!
-//! Requires the "cache", "voice", and "poise" features be enabled in your
-//! Cargo.toml.
 use std::{
+    process::exit,
     sync::{atomic::AtomicBool, Arc},
     time::Duration,
 };
@@ -27,7 +23,11 @@ use cracktunes::{
 
 use crack_types::CrackedError;
 use cracktunes::Data;
-use songbird::{input::YoutubeDl, Event, TrackEvent};
+use songbird::{
+    input::{Compose, YoutubeDl},
+    tracks::Track,
+    Event, TrackEvent,
+};
 use tracing::{debug, error, info};
 // Define the context type for poise
 type Context<'a> = poise::Context<'a, Data, serenity::Error>;
@@ -187,30 +187,44 @@ async fn leave(ctx: Context<'_>) -> Result<(), serenity::Error> {
 
 /// Plays a track from a URL
 #[poise::command(slash_command, prefix_command, guild_only)]
-async fn play_url(
+async fn play(
     ctx: Context<'_>,
-    #[description = "URL to a video or audio"] url: String,
+    #[description = "URL to media or search term"] url: String,
 ) -> Result<(), serenity::Error> {
     // Immediately acknowledge the interaction to prevent timeout
     ctx.defer().await?;
 
-    if !url.starts_with("http") {
-        ctx.say("Must provide a valid URL").await?;
-        return Ok(());
-    }
-
-    let guild_id = ctx.guild_id().unwrap();
+    let guild_id = ctx.guild_id().ok_or(CrackedError::from("No guild ID?"))?;
     let data = ctx.data();
+    let do_search = !url.starts_with("http");
 
     if let Some(handler_lock) = data.songbird.get(guild_id) {
         let mut handler = handler_lock.lock().await;
 
-        let src = YoutubeDl::new(data.req_client.clone(), url);
+        let mut src = if do_search {
+            YoutubeDl::new_search(data.req_client.clone(), url)
+        } else {
+            // Create a resolved track from the URL
+            //let query = QueryType::VideoLink(url);
+            //let track = ResolvedTrack::new(query).with_user_id(ctx.author().id);
+            YoutubeDl::new(data.req_client.clone(), url)
+        };
+
+        let requesting_user = ctx.author().name.clone().to_string();
+        let requesting_user_id = ctx.author().id.to_string();
+        let metadata = src.aux_metadata().await.unwrap_or_default();
+        // We store the user ID in the track data and the track title in the metadata
+        let track_data = Arc::new(cracktunes::TrackMetadata {
+            requesting_user_id,
+            requesting_user,
+            metadata,
+        });
+        let track = Track::new_with_data(src.into(), track_data);
 
         // This handler object will allow you to, as needed,
         // control the audio track via events and further commands.
         //let _ = handler.play_input(src.into());
-        let x = handler.enqueue_input(src.into()).await;
+        let x = handler.enqueue(track).await;
         let state = match x.get_info().await {
             Ok(state) => format!("{:?}", state.playing),
             Err(e) => {
@@ -225,62 +239,15 @@ async fn play_url(
             idle_info.bump_activity();
         }
 
-        ctx.say("Playing song").await?;
+        let queue_len = handler.queue().len();
+        if queue_len > 0 {
+            ctx.say(format!("Added song to queue: position {queue_len}"))
+                .await?;
+        } else {
+            ctx.say("Playing song").await?;
+        }
     } else {
         ctx.say("Not in a voice channel").await?;
-    }
-
-    Ok(())
-}
-
-/// Adds a song to the queue
-#[poise::command(slash_command, prefix_command, guild_only)]
-async fn queue(
-    ctx: Context<'_>,
-    #[description = "URL to a video or audio"] url: String,
-) -> Result<(), serenity::Error> {
-    // Immediately acknowledge the interaction to prevent timeout
-    ctx.defer().await?;
-
-    if !url.starts_with("http") {
-        ctx.say("Must provide a valid URL").await?;
-        return Ok(());
-    }
-
-    let guild_id = ctx.guild_id().unwrap();
-    let data = ctx.data();
-
-    // // Get the custom queue for this guild
-    // let queue = get_queue(ctx).await.map_err(|e| {
-    //     let err_fmt = Cow::Owned(format!("Error getting queue: {}", e));
-    //     error!("{}", err_fmt);
-    //     CrackedError::Other(err_fmt)
-    // })?;
-
-    if let Some(handler_lock) = data.songbird.get(guild_id) {
-        let handler = handler_lock.lock().await;
-
-        // Create a resolved track from the URL
-        // let query = QueryType::VideoLink(url);
-        //let track = ResolvedTrack::new(query).with_user_id(ctx.author().id);
-        let src = YoutubeDl::new(data.req_client.clone(), url);
-
-        let mut call = handler.clone();
-        // Add to our custom queue (which will also add to Songbird's queue)
-        // queue.enqueue(track.clone(), Some(&mut call)).await;
-        let _ = call.enqueue(src.into()).await;
-
-        // // Check if we need to start playing (if this is the first track)
-        // let queue_len = queue.len().await;
-        // // Build the display for the queue
-        // let mut queue_clone = queue.clone();
-        // queue_clone.build_display().await;
-        let queue_len = call.queue().len();
-
-        ctx.say(format!("Added song to queue: position {queue_len}"))
-            .await?;
-    } else {
-        ctx.say("Not in a voice channel to play in").await?;
     }
 
     Ok(())
@@ -503,8 +470,7 @@ fn get_commands() -> Vec<poise::Command<Data, serenity::Error>> {
         ping(),
         join(),
         leave(),
-        play_url(),
-        queue(),
+        play(),
         skip(),
         stop(),
         show_queue(),
@@ -572,40 +538,25 @@ async fn main() {
                     // Still handle the error for user feedback
                     match error {
                         poise::FrameworkError::Command { error, ctx, .. } => {
-                            #[cfg(feature = "crack-tracing")]
                             error!("Error in command `{}`: {:?}", ctx.command().name, error);
-                            #[cfg(not(feature = "crack-tracing"))]
-                            eprintln!("Error in command `{}`: {:?}", ctx.command().name, error);
 
                             if let Err(e) = ctx.say(format!("An error occurred: {}", error)).await {
-                                #[cfg(feature = "crack-tracing")]
                                 error!("Error while sending error message: {:?}", e);
-                                #[cfg(not(feature = "crack-tracing"))]
-                                eprintln!("Error while sending error message: {:?}", e);
                             }
                         }
                         poise::FrameworkError::CommandCheckFailed { error, ctx, .. } => {
-                            #[cfg(feature = "crack-tracing")]
                             error!("Command check failed: {:?}", error);
-                            #[cfg(not(feature = "crack-tracing"))]
-                            eprintln!("Command check failed: {:?}", error);
 
                             if let Some(error) = error {
                                 if let Err(e) =
                                     ctx.say(format!("Command check failed: {}", error)).await
                                 {
-                                    #[cfg(feature = "crack-tracing")]
                                     error!("Error while sending check failure message: {:?}", e);
-                                    #[cfg(not(feature = "crack-tracing"))]
-                                    eprintln!("Error while sending check failure message: {:?}", e);
                                 }
                             }
                         }
                         err => {
-                            #[cfg(feature = "crack-tracing")]
                             error!("Other framework error: {:?}", err);
-                            #[cfg(not(feature = "crack-tracing"))]
-                            eprintln!("Other framework error: {:?}", err);
                         }
                     }
                 })
@@ -629,9 +580,50 @@ async fn main() {
         .await
         .expect("Error creating client");
 
-    info!("Starting client");
-    let _ = client
-        .start()
-        .await
-        .map_err(|why| println!("Client ended: {:?}", why));
+    // let shard_manager = Arc::new(client.shard_manager);
+
+    tokio::spawn(async move {
+        info!("Starting client");
+        let _ = client
+            .start_autosharded()
+            .await
+            .map_err(|why| println!("Client ended: {:?}", why));
+    });
+
+    // let data2 = client.data.clone();
+    tokio::spawn(async move {
+        #[cfg(unix)]
+        {
+            use tokio::signal::unix as signal;
+
+            let [mut s1, mut s2, mut s3] = [
+                signal::signal(signal::SignalKind::hangup()).unwrap(),
+                signal::signal(signal::SignalKind::interrupt()).unwrap(),
+                signal::signal(signal::SignalKind::terminate()).unwrap(),
+            ];
+
+            tokio::select!(
+                v = s1.recv() => v.unwrap(),
+                v = s2.recv() => v.unwrap(),
+                v = s3.recv() => v.unwrap(),
+            );
+        }
+        #[cfg(windows)]
+        {
+            let (mut s1, mut s2) = (
+                tokio::signal::windows::ctrl_c().unwrap(),
+                tokio::signal::windows::ctrl_break().unwrap(),
+            );
+
+            tokio::select!(
+                v = s1.recv() => v.unwrap(),
+                v = s2.recv() => v.unwrap(),
+            );
+        }
+
+        info!("Received shutdown signal");
+        // shard_manager.shutdown_all()
+        // Do we need to do anything else to shutdown cleanly?
+        exit(0);
+    });
 }
