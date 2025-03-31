@@ -24,6 +24,8 @@ pub const TRACK_LOG_FILE: &str = "tracks";
 pub const ERROR_LOG_FILE: &str = "errors";
 
 /// Initialize the logging system with console and file outputs
+/// # Errors
+/// Returns an error if the log directory cannot be created or if the file appender fails to initialize.
 pub fn init() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Create log directory if it doesn't exist
     if !Path::new(LOG_DIR).exists() {
@@ -119,13 +121,12 @@ pub async fn log_command_start(ctx: Context<'_, Data, serenity::Error>) {
     let user_id = ctx.author().id.get().to_string();
 
     // Attempt to format arguments
-    let args = match ctx.command().parameters.is_empty() {
-        true => "".to_string(),
-        false => {
-            // This is a simplified approach - in a real scenario you'd want to
-            // extract the actual arguments more carefully
-            format!("{:?}", ctx.invocation_string())
-        }
+    let args = if ctx.command().parameters.is_empty() {
+        String::new()
+    } else {
+        // This is a simplified approach - in a real scenario you'd want to
+        // extract the actual arguments more carefully
+        format!("{:?}", ctx.invocation_string())
     };
 
     info!(
@@ -148,8 +149,7 @@ pub async fn log_command_end(ctx: Context<'_, Data, serenity::Error>) {
     let command_name = ctx.command().qualified_name.clone();
     let guild_id = ctx
         .guild_id()
-        .map(|id| id.get().to_string())
-        .unwrap_or_else(|| "DM".to_string());
+        .map_or_else(|| "DM".to_string(), |id| id.get().to_string());
     let user_id = ctx.author().id.get().to_string();
 
     info!(
@@ -157,7 +157,7 @@ pub async fn log_command_end(ctx: Context<'_, Data, serenity::Error>) {
         command = %command_name,
         guild_id = %guild_id,
         user_id = %user_id,
-        duration_ms = duration.map(|d| d.as_millis() as u64).unwrap_or(0),
+        duration_ms = duration.map_or(0, |d| d.as_millis() as u64),
         event = "end",
         "Command execution completed"
     );
@@ -187,14 +187,12 @@ pub async fn log_command_error(error: &FrameworkError<'_, Data, serenity::Error>
             let command_name = ctx.command().qualified_name.clone();
             let guild_id = ctx
                 .guild_id()
-                .map(|id| id.get().to_string())
-                .unwrap_or_else(|| "DM".to_string());
+                .map_or_else(|| "DM".to_string(), |id| id.get().to_string());
             let user_id = ctx.author().id.get().to_string();
 
             let error_msg = error
                 .as_ref()
-                .map(|e| e.to_string())
-                .unwrap_or_else(|| "Check failed".to_string());
+                .map_or_else(|| "Check failed".to_string(), |e| e.to_string());
 
             error!(
                 target: "cracktunes::error",

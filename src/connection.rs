@@ -50,6 +50,8 @@ pub fn get_voice_channel_for_user(guild: &Guild, user_id: &UserId) -> Result<Cha
 
 /// Get the voice channel a user is in within a guild, return a different error than normal
 /// for the summoning case.
+/// # Errors
+/// * If the user is not in a voice channel in the guild returns [`CrackedError::WrongVoiceChannel`].
 pub fn get_voice_channel_for_user_summon(
     guild: &Guild,
     user_id: &UserId,

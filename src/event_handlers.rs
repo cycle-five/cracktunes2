@@ -7,7 +7,7 @@ use std::sync::{
     Arc,
 };
 
-/// Enhanced TrackEndNotifier with better queue handling
+/// Enhanced track end notifier with queue checking and logging.
 pub struct EnhancedTrackEndNotifier {
     pub chan_id: ChannelId,
     pub http: Arc<Http>,
@@ -40,7 +40,7 @@ impl VoiceEventHandler for EnhancedTrackEndNotifier {
     }
 }
 
-/// Enhanced TrackErrorNotifier with better queue handling
+/// Enhanced error notifier with idle timeout handling and logging.
 pub struct EnhancedTrackErrorNotifier {
     pub chan_id: ChannelId,
     pub http: Arc<Http>,

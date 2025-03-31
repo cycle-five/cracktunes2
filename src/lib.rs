@@ -95,20 +95,6 @@ pub fn get_reqwest_client() -> reqwest::Client {
     REQ_CLIENT.clone()
 }
 
-// #[must_use]
-// pub fn build_rusty_ytdl_client() -> rusty_ytdl::search::YouTube {
-//     let req_client = REQ_CLIENT.clone();
-//     let opts = RequestOptions {
-//         client: Some(req_client.clone()),
-//         ..Default::default()
-//     };
-//     rusty_ytdl::search::YouTube::new_with_options(&opts)
-//         .unwrap_or_else(|_| panic!("{NEW_FAILED} {YOUTUBE_CLIENT_STR}"))
-// }
-
-// pub fn build_crack_track_client(songbird: Arc<songbird::Songbird>) -> CrackTrackClient {
-//     CrackTrackClient::new_with_components(REQ_CLIENT.clone(), YOUTUBE_CLIENT.clone(), songbird)
-// }
 /// Struct to hold idle timeout information for a guild
 #[derive(Clone)]
 pub struct IdleTimeoutInfo {
@@ -126,7 +112,7 @@ impl Default for IdleTimeoutInfo {
 }
 
 impl IdleTimeoutInfo {
-    /// Increment the last_activity timestamp by 1 (for marking active actions)
+    /// Increment the `last_activity` timestamp by 1 (for marking active actions)
     pub fn bump_activity(&self) {
         let current_time = self
             .last_activity
@@ -135,7 +121,7 @@ impl IdleTimeoutInfo {
             .store(current_time + 1, std::sync::atomic::Ordering::Relaxed);
     }
 
-    /// Set the last_activity timestamp to a specific value (for syncing with time tracking)
+    /// Set the `last_activity` timestamp to a specific value (for syncing with time tracking)
     pub fn set_activity_to(&self, time: usize) {
         self.last_activity
             .store(time, std::sync::atomic::Ordering::Relaxed);
@@ -187,7 +173,7 @@ impl fmt::Debug for CrackData {
 
 ///
 /// The data structure that will be available in all command contexts.
-/// This is a thin wrapper around CrackTrackClient.
+/// This is a thin wrapper around [`CrackData`].
 ///
 //#[derive(Clone)]
 pub struct Data(pub CrackData);
