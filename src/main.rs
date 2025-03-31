@@ -9,8 +9,9 @@ use std::{
 };
 
 use ::serenity::all::Token;
-use cracktunes::Connection;
+use cracktunes::{get_reqwest_client, get_youtube_client, Connection, CrackData};
 use poise::serenity_prelude as serenity;
+use rand::seq::SliceRandom;
 use serenity::{
     all::EventHandler,
     async_trait,
@@ -20,20 +21,19 @@ use serenity::{
 };
 
 use cracktunes::{
-    build_crack_track_client,
     event_handlers::{ChannelDurationNotifier, EnhancedTrackErrorNotifier},
     EnhancedTrackEndNotifier,
 };
 
-use crack_types::{CrackedError, QueryType};
-use cracktunes::{check_msg, CrackTrackQueue, Data, ResolvedTrack};
+use crack_types::CrackedError;
+use cracktunes::Data;
 use songbird::{input::YoutubeDl, Event, TrackEvent};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 // Define the context type for poise
 type Context<'a> = poise::Context<'a, Data, serenity::Error>;
 
 struct Handler {
-    data: Arc<Data>,
+    _data: Arc<Data>,
     commands: Vec<poise::Command<Data, serenity::Error>>,
 }
 
@@ -42,82 +42,27 @@ impl EventHandler for Handler {
     async fn dispatch(&self, ctx: &SerenityContext, event: &FullEvent) {
         match event {
             FullEvent::Ready { data_about_bot, .. } => {
-                #[cfg(feature = "crack-tracing")]
                 info!("{} is connected!", data_about_bot.user.name);
-                #[cfg(not(feature = "crack-tracing"))]
-                println!("{} is connected!", data_about_bot.user.name);
 
                 if let Err(err) =
                     poise::builtins::register_globally(&ctx.http, &self.commands).await
                 {
-                    #[cfg(feature = "crack-tracing")]
                     error!("Error registering commands: {}", err);
-                    #[cfg(not(feature = "crack-tracing"))]
-                    eprintln!("Error registering commands: {}", err);
                 } else {
-                    let data_str = self.data.clone().to_string();
-                    #[cfg(feature = "crack-tracing")]
+                    let app_id = data_about_bot.application.id;
+                    let commands = data_about_bot.application.flags;
+                    let data_str = format!("{app_id} - {commands:?}");
                     info!("Successfully registered commands: {data_str}");
-                    #[cfg(not(feature = "crack-tracing"))]
-                    println!("Successfully registered commands: {data_str}");
                 }
                 // TODO: Load guilds from the database for persistent configurations
             }
             FullEvent::Resume { .. } => {
                 // Log at the DEBUG level.
-                #[cfg(feature = "crack-tracing")]
                 debug!("Resumed");
-                #[cfg(not(feature = "crack-tracing"))]
-                println!("Resumed");
             }
             _ => {}
         }
     }
-}
-
-// Helper function to get a queue for a guild
-async fn get_queue(ctx: Context<'_>) -> Result<CrackTrackQueue, String> {
-    let guild_id = ctx.guild_id().ok_or("Not in a guild")?;
-    Ok(ctx.data().get_queue(guild_id))
-}
-
-/// Play the next track from the queue
-async fn play_next_from_queue(
-    ctx: Context<'_>,
-    queue: CrackTrackQueue,
-) -> Result<(), serenity::Error> {
-    // Get the next track from our custom queue
-    if let Some(track) = queue.get(0).await {
-        // Songbird will automatically play the next track
-        // We just need to update our display and logging
-
-        // Update activity timestamp by bumping it
-        let guild_id = ctx.guild_id().unwrap();
-        if let Some(idle_info) = ctx.data().idle_timeouts.get(&guild_id) {
-            idle_info.bump_activity();
-        }
-
-        // Log track playback
-        cracktunes::logging::log_track_play(
-            ctx.guild_id().unwrap(),
-            ctx.author().id,
-            ctx.channel_id(),
-            &track.get_title(),
-        )
-        .await;
-
-        // Notify that the track is playing
-        check_msg(
-            ctx.channel_id()
-                .say(
-                    &ctx.serenity_context().http,
-                    &format!("Now playing: {}", track.get_title()),
-                )
-                .await,
-        );
-    }
-
-    Ok(())
 }
 
 /// Joins the voice channel of the user
@@ -264,7 +209,16 @@ async fn play_url(
 
         // This handler object will allow you to, as needed,
         // control the audio track via events and further commands.
-        let _ = handler.play_input(src.into());
+        //let _ = handler.play_input(src.into());
+        let x = handler.enqueue_input(src.into()).await;
+        let state = match x.get_info().await {
+            Ok(state) => format!("{:?}", state.playing),
+            Err(e) => {
+                format!("Failed to play: {:?}", e)
+            }
+        };
+
+        tracing::info!("State: {}", state);
 
         // Update activity timestamp by bumping it
         if let Some(idle_info) = ctx.data().idle_timeouts.get(&guild_id) {
@@ -296,29 +250,32 @@ async fn queue(
     let guild_id = ctx.guild_id().unwrap();
     let data = ctx.data();
 
-    // Get the custom queue for this guild
-    let queue = get_queue(ctx).await.map_err(|e| {
-        let err_fmt = Cow::Owned(format!("Error getting queue: {}", e));
-        error!("{}", err_fmt);
-        CrackedError::Other(err_fmt)
-    })?;
+    // // Get the custom queue for this guild
+    // let queue = get_queue(ctx).await.map_err(|e| {
+    //     let err_fmt = Cow::Owned(format!("Error getting queue: {}", e));
+    //     error!("{}", err_fmt);
+    //     CrackedError::Other(err_fmt)
+    // })?;
 
     if let Some(handler_lock) = data.songbird.get(guild_id) {
         let handler = handler_lock.lock().await;
 
         // Create a resolved track from the URL
-        let query = QueryType::VideoLink(url);
-        let track = ResolvedTrack::new(query).with_user_id(ctx.author().id);
+        // let query = QueryType::VideoLink(url);
+        //let track = ResolvedTrack::new(query).with_user_id(ctx.author().id);
+        let src = YoutubeDl::new(data.req_client.clone(), url);
 
         let mut call = handler.clone();
         // Add to our custom queue (which will also add to Songbird's queue)
-        queue.enqueue(track.clone(), Some(&mut call)).await;
+        // queue.enqueue(track.clone(), Some(&mut call)).await;
+        let _ = call.enqueue(src.into()).await;
 
-        // Check if we need to start playing (if this is the first track)
-        let queue_len = queue.len().await;
-        // Build the display for the queue
-        let mut queue_clone = queue.clone();
-        queue_clone.build_display().await;
+        // // Check if we need to start playing (if this is the first track)
+        // let queue_len = queue.len().await;
+        // // Build the display for the queue
+        // let mut queue_clone = queue.clone();
+        // queue_clone.build_display().await;
+        let queue_len = call.queue().len();
 
         ctx.say(format!("Added song to queue: position {queue_len}"))
             .await?;
@@ -344,15 +301,8 @@ async fn skip(ctx: Context<'_>) -> Result<(), serenity::Error> {
         // Skip the current song in songbird's queue
         let _ = handler.queue().skip();
 
-        // Also dequeue from our custom queue
-        let custom_queue = get_queue(ctx).await.map_err(|e| {
-            println!("Error getting queue: {}", e);
-            CrackedError::from("Failed to get queue")
-        })?;
+        let len = handler.queue().len();
 
-        let _ = custom_queue.dequeue().await;
-
-        let len = custom_queue.len().await;
         ctx.say(format!("Song skipped: {} in queue.", len)).await?;
     } else {
         ctx.say("Not in a voice channel to play in").await?;
@@ -376,14 +326,6 @@ async fn stop(ctx: Context<'_>) -> Result<(), serenity::Error> {
         // Stop the songbird queue
         handler.stop();
 
-        // Clear our custom queue
-        let custom_queue = get_queue(ctx).await.map_err(|e| {
-            println!("Error getting queue: {}", e);
-            CrackedError::from("Failed to get queue")
-        })?;
-
-        custom_queue.clear().await;
-
         ctx.say("Queue cleared.").await?;
     } else {
         ctx.say("Not in a voice channel to play in").await?;
@@ -398,21 +340,7 @@ async fn show_queue(ctx: Context<'_>) -> Result<(), serenity::Error> {
     // Immediately acknowledge the interaction to prevent timeout
     ctx.defer().await?;
 
-    let custom_queue = get_queue(ctx).await.map_err(|e| {
-        println!("Error getting queue: {}", e);
-        CrackedError::from("Failed to get queue")
-    })?;
-
-    let mut queue_clone = custom_queue.clone();
-    queue_clone.build_display().await;
-
-    let display = queue_clone.get_display();
-
-    if display.is_empty() {
-        ctx.say("The queue is empty.").await?;
-    } else {
-        ctx.say(format!("**Current Queue:**\n{}", display)).await?;
-    }
+    ctx.say("Not yet implemented").await?;
 
     Ok(())
 }
@@ -427,40 +355,9 @@ async fn shuffle(ctx: Context<'_>) -> Result<(), serenity::Error> {
     let manager = ctx.data().songbird.clone();
 
     if let Some(handler_lock) = manager.get(guild_id) {
-        let mut handler = handler_lock.lock().await;
+        let handler = handler_lock.lock().await;
 
-        // Get our custom queue
-        let custom_queue = get_queue(ctx).await.map_err(|e| {
-            println!("Error getting queue: {}", e);
-            CrackedError::from("Failed to get queue")
-        })?;
-
-        // Save the current playing track if there is one
-        let current_track = if !custom_queue.is_empty().await {
-            custom_queue.dequeue().await
-        } else {
-            None
-        };
-
-        // Shuffle our custom queue
-        custom_queue.shuffle().await;
-
-        // If we had a current track, put it back at the front
-        if let Some(track) = current_track {
-            custom_queue.push_front(track).await;
-        }
-
-        // We need to rebuild the songbird queue to match our shuffled queue
-        handler.stop();
-
-        // Play the next track from our shuffled queue
-        if !custom_queue.is_empty().await {
-            play_next_from_queue(ctx, custom_queue.clone()).await?;
-        }
-
-        // Build the display for the queue
-        let mut queue_clone = custom_queue.clone();
-        queue_clone.build_display().await;
+        let _ = handler.queue().current_queue().shuffle(&mut rand::rng());
 
         ctx.say("Queue shuffled!").await?;
     } else {
@@ -635,8 +532,16 @@ async fn main() {
     let manager: Arc<songbird::Songbird> = songbird::Songbird::serenity();
     let manager_clone: Arc<songbird::Songbird> = Arc::clone(&manager);
 
+    let req_client = get_reqwest_client();
+    let yt_client = get_youtube_client();
+
     // Create the CrackTrackClient and wrap it in Data
-    let client_data = Data(build_crack_track_client(manager_clone.clone()));
+    let client_data = Data(CrackData {
+        req_client,
+        yt_client,
+        songbird: manager_clone,
+        idle_timeouts: Default::default(),
+    });
 
     // Set up the poise framework with command hooks for logging
     let framework = poise::Framework::builder()
@@ -712,7 +617,7 @@ async fn main() {
     let arc_data = Arc::new(client_data);
     // Create an event handler that will register commands and has access to the data
     let handler = Handler {
-        data: arc_data.clone(),
+        _data: arc_data.clone(),
         commands: get_commands(),
     };
 
@@ -724,7 +629,7 @@ async fn main() {
         .await
         .expect("Error creating client");
 
-    warn!("Starting client");
+    info!("Starting client");
     let _ = client
         .start()
         .await

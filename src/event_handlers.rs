@@ -1,7 +1,6 @@
 use crate::{check_msg, Data};
 use poise::serenity_prelude as serenity;
 use serenity::all::{async_trait, ChannelId, GuildId, Http};
-use songbird::input::YoutubeDl;
 use songbird::{Event, EventContext, EventHandler as VoiceEventHandler};
 use std::sync::{
     atomic::{AtomicBool, AtomicUsize},
@@ -20,70 +19,23 @@ pub struct EnhancedTrackEndNotifier {
 #[async_trait]
 impl VoiceEventHandler for EnhancedTrackEndNotifier {
     async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
-        // Get the custom queue for this guild
-        if let Some(queue) = self.data.guild_queues.get(&self.guild_id) {
-            // Check if there are more tracks in the queue
-            if !queue.is_empty().await {
-                // Get the handler for this guild
-                // Update our metadata queue to match Songbird's state
-                // by removing the track that just ended
-                let _ = queue.dequeue().await;
-
-                // Check if there are more tracks in the queue
-                if !queue.is_empty().await {
-                    // Get the next track from our custom queue for display purposes
-                    if let Some(next_track) = queue.get(0).await {
-                        // Notify that the next track is playing
-                        check_msg(
-                            self.chan_id
-                                .say(
-                                    &self.http,
-                                    &format!("Now playing: {}", next_track.get_title()),
-                                )
-                                .await,
-                        );
-
-                        // Update activity timestamp
-                        if let Some(idle_info) = self.data.idle_timeouts.get(&self.guild_id) {
-                            idle_info.bump_activity();
-                        }
-                    }
-                } else {
-                    // Queue is empty
-                    check_msg(self.chan_id.say(&self.http, "Queue finished.").await);
-                }
+        let guild_id = self.guild_id;
+        if let Some(handle_guard) = self.data.songbird.get(guild_id) {
+            let call = handle_guard.lock().await;
+            let queue = call.queue().clone();
+            // Check if the queue is empty
+            if queue.is_empty() {
+                // Notify that the queue is finished
+                check_msg(self.chan_id.say(&self.http, "Queue finished.").await);
             } else {
-                // Queue is empty
-                // Check if we're looping
-                if self.is_looping.load(std::sync::atomic::Ordering::Relaxed) {
-                    check_msg(
-                        self.chan_id
-                            .say(&self.http, "Queue ended. Restarting loop...")
-                            .await,
-                    );
-
-                    // Handle looping logic by getting the original queue backup
-                    // In a real implementation, you'd need to store this somewhere
-                    // For now, we'll just indicate that looping would happen here
-
-                    // This is where you'd restore the queue from a backup
-                    // For example:
-                    // if let Some(backup) = self.data.queue_backups.get(&self.guild_id) {
-                    //     let mut original_tracks = backup.value().clone();
-                    //     queue.append_vec(original_tracks).await;
-                    //
-                    //     // Start playing the first track
-                    //     if let Some(handler_lock) = self.data.songbird.get(self.guild_id) {
-                    //         // ... similar to the code above to play the next track
-                    //     }
-                    // }
-                } else {
-                    // Not looping, just notify queue is finished
-                    check_msg(self.chan_id.say(&self.http, "Queue finished.").await);
-                }
+                // Notify that the next track is playing
+                check_msg(
+                    self.chan_id
+                        .say(&self.http, "Playing next track in queue...")
+                        .await,
+                );
             }
         }
-
         None
     }
 }
@@ -100,7 +52,10 @@ pub struct EnhancedTrackErrorNotifier {
 #[async_trait]
 impl VoiceEventHandler for EnhancedTrackErrorNotifier {
     async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
-        if let EventContext::Track([(_, track)]) = ctx {
+        if let EventContext::Track([(track_state, _track)]) = ctx {
+            // Check if the track has an error
+            let log_str = format!("{track_state:?}");
+            tracing::error!("Track error: {log_str}");
             // Notify about the error
             check_msg(
                 self.chan_id
@@ -112,51 +67,11 @@ impl VoiceEventHandler for EnhancedTrackErrorNotifier {
             );
 
             // Stop the current track
-            let _ = track.stop();
-
-            // Get the custom queue for this guild
-            if let Some(queue) = self.data.guild_queues.get(&self.guild_id) {
-                // Handle playing next track - same logic as in EnhancedTrackEndNotifier
-                // This is intentionally duplicated to make the error handler independent
-                if !queue.is_empty().await {
-                    if let Some(handler_lock) = self.data.songbird.get(self.guild_id) {
-                        let mut handler = handler_lock.lock().await;
-
-                        if let Some(next_track) = queue.dequeue().await {
-                            let src =
-                                YoutubeDl::new(self.data.req_client.clone(), next_track.get_url());
-
-                            let _song = handler.play_input(src.into());
-
-                            // Update activity timestamp by bumping it
-                            if let Some(idle_info) = self.data.idle_timeouts.get(&self.guild_id) {
-                                idle_info.bump_activity();
-                            }
-
-                            check_msg(
-                                self.chan_id
-                                    .say(
-                                        &self.http,
-                                        &format!("Now playing: {}", next_track.get_title()),
-                                    )
-                                    .await,
-                            );
-                        }
-                    }
-                } else {
-                    // Same loop handling logic as in EnhancedTrackEndNotifier
-                    if self.is_looping.load(std::sync::atomic::Ordering::Relaxed) {
-                        check_msg(
-                            self.chan_id
-                                .say(&self.http, "Queue ended. Restarting loop...")
-                                .await,
-                        );
-
-                        // Loop handling code would go here
-                    } else {
-                        check_msg(self.chan_id.say(&self.http, "Queue finished.").await);
-                    }
-                }
+            // I don't think we need to stop the track here, as it should be handled by the library?
+            //let _ = track.stop();
+            // Update activity timestamp by bumping it
+            if let Some(idle_info) = self.data.idle_timeouts.get(&self.guild_id) {
+                idle_info.bump_activity();
             }
         }
 

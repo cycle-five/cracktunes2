@@ -3695,6 +3695,7 @@ dependencies = [
  "serde",
  "serde_cow",
  "serde_json",
+ "serenity-voice-model 0.2.0 (git+https://github.com/serenity-rs/serenity?branch=next)",
  "small-fixed-array",
  "strum 0.26.3",
  "time",
@@ -3713,6 +3714,18 @@ name = "serenity-voice-model"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "593682f6155d07c8b331b3d1060f5aab7e6796caca9f2f66bd9e6855c880e06b"
+dependencies = [
+ "bitflags 2.9.0",
+ "num-traits",
+ "serde",
+ "serde_json",
+ "serde_repr",
+]
+
+[[package]]
+name = "serenity-voice-model"
+version = "0.2.0"
+source = "git+https://github.com/serenity-rs/serenity?branch=next#da271c87f736be3e32cabcac7bd8ccf1058d1ee0"
 dependencies = [
  "bitflags 2.9.0",
  "num-traits",
@@ -3891,7 +3904,7 @@ dependencies = [
  "serde-aux",
  "serde_json",
  "serenity",
- "serenity-voice-model",
+ "serenity-voice-model 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "socket2",
  "stream_lib",
  "streamcatcher",
