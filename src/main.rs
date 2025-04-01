@@ -1,3 +1,4 @@
+#![feature(iter_chain)]
 use std::{iter::chain, process::exit, sync::Arc};
 
 use ::serenity::all::Token;
@@ -187,11 +188,9 @@ fn get_commands() -> Vec<poise::Command<Data, serenity::Error>> {
             deafen(),
             undeafen(),
             set_idle_timeout(),
-        ]
-        .into_iter(),
-        all_music_commands().into_iter(),
+        ],
+        all_music_commands(),
     )
-    .into_iter()
     .collect()
 }
 

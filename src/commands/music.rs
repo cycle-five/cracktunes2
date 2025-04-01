@@ -169,8 +169,8 @@ pub async fn play(
         let metadata = src.aux_metadata().await.unwrap_or_default();
         // We store the user ID in the track data and the track title in the metadata
         let track_data = Arc::new(TrackMetadata {
-            requesting_user_id,
             requesting_user,
+            requesting_user_id,
             metadata,
         });
         let track = Track::new_with_data(src.into(), track_data);
