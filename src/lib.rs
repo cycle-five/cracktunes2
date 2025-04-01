@@ -1,3 +1,4 @@
+#![feature(iter_chain)]
 pub mod event_handlers;
 pub use event_handlers::*;
 pub mod logging;
