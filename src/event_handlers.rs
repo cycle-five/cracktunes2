@@ -66,9 +66,6 @@ impl VoiceEventHandler for EnhancedTrackErrorNotifier {
                     .await,
             );
 
-            // Stop the current track
-            // I don't think we need to stop the track here, as it should be handled by the library?
-            //let _ = track.stop();
             // Update activity timestamp by bumping it
             if let Some(idle_info) = self.data.idle_timeouts.get(&self.guild_id) {
                 idle_info.bump_activity();

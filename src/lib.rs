@@ -4,6 +4,8 @@ pub mod logging;
 pub use logging::*;
 pub mod connection;
 pub use connection::*;
+pub mod commands;
+pub use commands::*;
 
 #[cfg(test)]
 pub mod test;
