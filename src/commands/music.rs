@@ -166,7 +166,7 @@ pub async fn play(
 
         let requesting_user = ctx.author().name.clone().to_string();
         let requesting_user_id = ctx.author().id.to_string();
-        let metadata = src.aux_metadata().await.unwrap_or_default();
+        let metadata = src.aux_metadata().await.ok();
         // We store the user ID in the track data and the track title in the metadata
         let track_data = Arc::new(TrackMetadata {
             requesting_user,

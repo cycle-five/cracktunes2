@@ -146,11 +146,21 @@ impl fmt::Debug for IdleTimeoutInfo {
 pub struct TrackMetadata {
     pub requesting_user: String,
     pub requesting_user_id: String,
-    pub metadata: AuxMetadata,
+    pub metadata: Option<AuxMetadata>,
 }
 
 unsafe impl Send for TrackMetadata {}
 unsafe impl Sync for TrackMetadata {}
+
+impl Debug for TrackMetadata {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TrackMetadata")
+            .field("requesting_user", &self.requesting_user)
+            .field("requesting_user_id", &self.requesting_user_id)
+            .field("metadata", &self.metadata)
+            .finish()
+    }
+}
 
 /// Client for resolving tracks and managing queues. Also holds other clients like
 /// reqwest, `rusty_ytdl`, and songbird.
