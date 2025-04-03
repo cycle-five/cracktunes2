@@ -249,7 +249,7 @@ pub async fn suggestion2(query: &str) -> Vec<SearchSuggestion> {
         Ok(results) => {
             let suggestions: Vec<SearchSuggestion> = results
                 .into_iter()
-                .flat_map(|x| match x {
+                .filter_map(|x| match x {
                     search::SearchResult::Video(video) => {
                         //Some(format!("{} * {}", video.title, video.duration))
                         Some(SearchSuggestion {
