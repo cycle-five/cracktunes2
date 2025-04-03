@@ -12,7 +12,7 @@ pub use commands::*;
 pub mod test;
 
 // Define the context type for poise
-pub type Context<'a> = poise::Context<'a, Data, serenity::Error>;
+pub type Context<'a> = poise::Context<'a, Data, crack_types::Error>;
 
 //------------------------------------
 // crack_types imports
@@ -29,7 +29,7 @@ use rusty_ytdl::{search, search::YouTube};
 use songbird::input::AuxMetadata;
 use std::sync::atomic::AtomicUsize;
 use std::sync::LazyLock;
-use tracing::error;
+use tracing::{error, info};
 //------------------------------------
 // Standard library imports
 //------------------------------------
@@ -218,18 +218,66 @@ impl Debug for Data {
     }
 }
 
-// /// Get a suggestion from a query. Use the global static client.
-// /// # Errors
-// /// Returns an error if the query fails.
-// pub async fn suggestion2(query: &str) -> Result<Vec<AutocompleteChoice>, Error> {
-//     // Access the static directly instead of cloning it
-//     CRACK_TRACK_CLIENT.resolve_suggestion_search(query).await
-// }
+#[derive(Debug, Clone)]
+pub struct SearchSuggestion {
+    pub title: String,
+    pub url: String,
+    pub duration: String,
+}
+
+impl fmt::Display for SearchSuggestion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[{}]({}) - ({})", self.title, self.url, self.duration)
+    }
+}
+
+/// Get a suggestion from a query. Use the global static client.
+/// # Errors
+/// Returns an error if the query fails.
+pub async fn suggestion2(query: &str) -> Vec<SearchSuggestion> {
+    // Access the static directly instead of cloning it
+    if query.len() < 3 {
+        return Vec::new();
+    }
+    let client = YOUTUBE_CLIENT.clone();
+    let search_options = search::SearchOptions {
+        limit: 5,
+        ..Default::default()
+    };
+    let res = client.search(query, Some(&search_options)).await;
+    match res {
+        Ok(results) => {
+            let suggestions: Vec<SearchSuggestion> = results
+                .into_iter()
+                .flat_map(|x| match x {
+                    search::SearchResult::Video(video) => {
+                        //Some(format!("{} * {}", video.title, video.duration))
+                        Some(SearchSuggestion {
+                            title: video.title,
+                            url: video.url,
+                            duration: video.duration.to_string(),
+                        })
+                    }
+                    _ => None,
+                })
+                .collect();
+            info!("Suggestions: {suggestions:?}");
+            suggestions
+        }
+        Err(e) => {
+            error!("Error getting suggestions: {e:?}");
+            Vec::new()
+        }
+    }
+}
 
 /// Get a suggestion from a query. Use the global static client.
 /// # Errors
 /// Returns an error if the query fails.
 pub async fn suggestion(query: &str) -> Result<Vec<String>, Error> {
+    if query.len() < 3 {
+        return Ok(Vec::new());
+    }
     let client = YOUTUBE_CLIENT.clone();
     suggestion_yt(client, query).await
 }

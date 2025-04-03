@@ -13,11 +13,11 @@ use serenity::{
 use cracktunes::Data;
 use tracing::{debug, error, info};
 // Define the context type for poise
-pub type Context<'a> = poise::Context<'a, Data, serenity::Error>;
+pub type Context<'a> = poise::Context<'a, Data, crack_types::Error>;
 
 struct Handler {
     _data: Arc<Data>,
-    commands: Vec<poise::Command<Data, serenity::Error>>,
+    commands: Vec<poise::Command<Data, crack_types::Error>>,
 }
 
 #[async_trait]
@@ -32,9 +32,12 @@ impl EventHandler for Handler {
                 {
                     error!("Error registering commands: {}", err);
                 } else {
-                    let app_id = data_about_bot.application.id;
-                    let commands = data_about_bot.application.flags;
-                    let data_str = format!("{app_id} - {commands:?}");
+                    let data_str = self
+                        .commands
+                        .iter()
+                        .map(|cmd| format!("`{}`", cmd.name))
+                        .collect::<Vec<_>>()
+                        .join(", ");
                     info!("Successfully registered commands: {data_str}");
                 }
                 // TODO: Load guilds from the database for persistent configurations
@@ -51,18 +54,18 @@ impl EventHandler for Handler {
 /// Pings the bot
 #[tracing::instrument(skip(ctx))]
 #[poise::command(slash_command, prefix_command)]
-async fn ping(ctx: Context<'_>) -> Result<(), serenity::Error> {
+async fn ping(ctx: Context<'_>) -> Result<(), crack_types::Error> {
     ctx.say("Pong!").await?;
     Ok(())
 }
 
 /// Mutes the bot
 #[poise::command(slash_command, prefix_command, guild_only)]
-async fn mute(ctx: Context<'_>) -> Result<(), serenity::Error> {
+async fn mute(ctx: Context<'_>) -> Result<(), crack_types::Error> {
     let guild_id = ctx.guild_id().unwrap();
-    let manager = ctx.data().songbird.clone();
+    let songbird = ctx.data().songbird.clone();
 
-    if let Some(handler_lock) = manager.get(guild_id) {
+    if let Some(handler_lock) = songbird.get(guild_id) {
         let mut handler = handler_lock.lock().await;
 
         if handler.is_mute() {
@@ -81,11 +84,11 @@ async fn mute(ctx: Context<'_>) -> Result<(), serenity::Error> {
 
 /// Unmutes the bot
 #[poise::command(slash_command, prefix_command, guild_only)]
-async fn unmute(ctx: Context<'_>) -> Result<(), serenity::Error> {
+async fn unmute(ctx: Context<'_>) -> Result<(), crack_types::Error> {
     let guild_id = ctx.guild_id().unwrap();
-    let manager = ctx.data().songbird.clone();
+    let songbird = ctx.data().songbird.clone();
 
-    if let Some(handler_lock) = manager.get(guild_id) {
+    if let Some(handler_lock) = songbird.get(guild_id) {
         let mut handler = handler_lock.lock().await;
         if let Err(e) = handler.mute(false).await {
             ctx.say(format!("Failed: {e:?}")).await?;
@@ -101,11 +104,11 @@ async fn unmute(ctx: Context<'_>) -> Result<(), serenity::Error> {
 
 /// Deafens the bot
 #[poise::command(slash_command, prefix_command, guild_only)]
-async fn deafen(ctx: Context<'_>) -> Result<(), serenity::Error> {
+async fn deafen(ctx: Context<'_>) -> Result<(), crack_types::Error> {
     let guild_id = ctx.guild_id().unwrap();
-    let manager = ctx.data().songbird.clone();
+    let songbird = ctx.data().songbird.clone();
 
-    if let Some(handler_lock) = manager.get(guild_id) {
+    if let Some(handler_lock) = songbird.get(guild_id) {
         let mut handler = handler_lock.lock().await;
 
         if handler.is_deaf() {
@@ -127,7 +130,7 @@ async fn deafen(ctx: Context<'_>) -> Result<(), serenity::Error> {
 async fn set_idle_timeout(
     ctx: Context<'_>,
     #[description = "Timeout in minutes (0 = never leave)"] minutes: usize,
-) -> Result<(), serenity::Error> {
+) -> Result<(), crack_types::Error> {
     let guild_id = ctx.guild_id().unwrap();
 
     // Get or create the idle timeout info for this guild
@@ -160,11 +163,11 @@ async fn set_idle_timeout(
 
 /// Undeafens the bot
 #[poise::command(slash_command, prefix_command, guild_only)]
-async fn undeafen(ctx: Context<'_>) -> Result<(), serenity::Error> {
+async fn undeafen(ctx: Context<'_>) -> Result<(), crack_types::Error> {
     let guild_id = ctx.guild_id().unwrap();
-    let manager = ctx.data().songbird.clone();
+    let songbird = ctx.data().songbird.clone();
 
-    if let Some(handler_lock) = manager.get(guild_id) {
+    if let Some(handler_lock) = songbird.get(guild_id) {
         let mut handler = handler_lock.lock().await;
         if let Err(e) = handler.deafen(false).await {
             ctx.say(format!("Failed: {e:?}")).await?;
@@ -179,7 +182,7 @@ async fn undeafen(ctx: Context<'_>) -> Result<(), serenity::Error> {
 }
 
 /// Define commands
-fn get_commands() -> Vec<poise::Command<Data, serenity::Error>> {
+fn get_commands() -> Vec<poise::Command<Data, crack_types::Error>> {
     chain(
         vec![
             ping(),
@@ -207,8 +210,8 @@ async fn main() {
 
     let intents = GatewayIntents::non_privileged();
 
-    let manager: Arc<songbird::Songbird> = songbird::Songbird::serenity();
-    let manager_clone: Arc<songbird::Songbird> = Arc::clone(&manager);
+    let songbird: Arc<songbird::Songbird> = songbird::Songbird::serenity();
+    let songbird_clone: Arc<songbird::Songbird> = Arc::clone(&songbird);
 
     let req_client = get_reqwest_client();
     let yt_client = get_youtube_client();
@@ -217,7 +220,7 @@ async fn main() {
     let client_data = Data(CrackData {
         req_client,
         yt_client,
-        songbird: manager_clone,
+        songbird: songbird_clone,
         idle_timeouts: DashMap::default(),
     });
 
@@ -289,7 +292,7 @@ async fn main() {
         .data::<Data>(arc_data)
         .event_handler(handler)
         .framework(framework)
-        .voice_manager::<songbird::Songbird>(manager)
+        .voice_manager::<songbird::Songbird>(songbird)
         .await
         .expect("Error creating client");
 

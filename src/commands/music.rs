@@ -1,8 +1,9 @@
 use crate::{
     check_voice_connections,
     event_handlers::{ChannelDurationNotifier, EnhancedTrackErrorNotifier},
-    Connection, Context, EnhancedTrackEndNotifier, IdleTimeoutInfo, TrackMetadata,
+    suggestion2, Connection, Context, EnhancedTrackEndNotifier, IdleTimeoutInfo, TrackMetadata,
 };
+use ::serenity::all::{AutocompleteChoice, AutocompleteValue, CreateAutocompleteResponse};
 use crack_types::CrackedError;
 use poise::serenity_prelude as serenity;
 use rand::seq::SliceRandom;
@@ -13,6 +14,7 @@ use songbird::{
     Event, TrackEvent,
 };
 use std::{
+    borrow::Cow,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -23,7 +25,7 @@ use tracing::info;
 
 /// Joins the voice channel of the user
 #[poise::command(slash_command, prefix_command, guild_only)]
-pub async fn join(ctx: Context<'_>) -> Result<(), serenity::Error> {
+pub async fn join(ctx: Context<'_>) -> Result<(), crack_types::Error> {
     let guild = ctx.guild().unwrap().clone();
     let guild_id = guild.id;
 
@@ -51,9 +53,9 @@ pub async fn join(ctx: Context<'_>) -> Result<(), serenity::Error> {
         }
     };
 
-    let manager = ctx.data().songbird.clone();
+    let songbird = ctx.data().songbird.clone();
 
-    if let Ok(handle_lock) = manager.join(guild_id, connect_to).await {
+    if let Ok(handle_lock) = songbird.join(guild_id, connect_to).await {
         ctx.say(format!("Joined {}", connect_to.mention())).await?;
 
         let chan_id = ctx.channel_id();
@@ -119,15 +121,15 @@ pub async fn join(ctx: Context<'_>) -> Result<(), serenity::Error> {
 
 /// Leaves the voice channel
 #[poise::command(slash_command, prefix_command, guild_only)]
-pub async fn leave(ctx: Context<'_>) -> Result<(), serenity::Error> {
+pub async fn leave(ctx: Context<'_>) -> Result<(), crack_types::Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::from("No guild ID?"))?;
-    let manager = ctx.data().songbird.clone();
+    let songbird = ctx.data().songbird.clone();
 
-    if let Some(handle_lock) = manager.get(guild_id) {
+    if let Some(handle_lock) = songbird.get(guild_id) {
         // Remove all global events
         handle_lock.lock().await.remove_all_global_events();
 
-        if let Err(e) = manager.remove(guild_id).await {
+        if let Err(e) = songbird.remove(guild_id).await {
             ctx.say(format!("Failed: {e:?}")).await?;
         } else {
             ctx.say("Left voice channel").await?;
@@ -139,12 +141,32 @@ pub async fn leave(ctx: Context<'_>) -> Result<(), serenity::Error> {
     Ok(())
 }
 
+/// Autocomplete to suggest a search query.
+pub async fn autocomplete<'a>(
+    _ctx: poise::ApplicationContext<'_, crate::Data, crate::Error>,
+    searching: &'a str,
+) -> CreateAutocompleteResponse<'a> {
+    let choices: Vec<_> = suggestion2(searching)
+        .await
+        .into_iter()
+        .map(|s| {
+            let name = s.title;
+            let value = s.url;
+            AutocompleteChoice::new(name, AutocompleteValue::String(Cow::Owned(value)))
+        })
+        .collect();
+    let res = CreateAutocompleteResponse::new();
+    res.set_choices(Cow::Owned(choices.clone()))
+}
+
 /// Plays a track from a URL
 #[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn play(
     ctx: Context<'_>,
-    #[description = "URL to media or search term"] url: String,
-) -> Result<(), serenity::Error> {
+    #[autocomplete = "autocomplete"]
+    #[description = "URL to media or search term"]
+    url: String,
+) -> Result<(), crack_types::Error> {
     // Immediately acknowledge the interaction to prevent timeout
     ctx.defer().await?;
 
@@ -209,14 +231,14 @@ pub async fn play(
 
 /// Skips the current song
 #[poise::command(slash_command, prefix_command, guild_only)]
-pub async fn skip(ctx: Context<'_>) -> Result<(), serenity::Error> {
+pub async fn skip(ctx: Context<'_>) -> Result<(), crack_types::Error> {
     // Immediately acknowledge the interaction to prevent timeout
     ctx.defer().await?;
 
     let guild_id = ctx.guild_id().unwrap();
-    let manager = ctx.data().songbird.clone();
+    let songbird = ctx.data().songbird.clone();
 
-    if let Some(handler_lock) = manager.get(guild_id) {
+    if let Some(handler_lock) = songbird.get(guild_id) {
         let handler = handler_lock.lock().await;
 
         // Skip the current song in songbird's queue
@@ -234,14 +256,14 @@ pub async fn skip(ctx: Context<'_>) -> Result<(), serenity::Error> {
 
 /// Stops playback and clears the queue
 #[poise::command(slash_command, prefix_command, guild_only)]
-pub async fn stop(ctx: Context<'_>) -> Result<(), serenity::Error> {
+pub async fn stop(ctx: Context<'_>) -> Result<(), crack_types::Error> {
     // Immediately acknowledge the interaction to prevent timeout
     ctx.defer().await?;
 
     let guild_id = ctx.guild_id().unwrap();
-    let manager = ctx.data().songbird.clone();
+    let songbird = ctx.data().songbird.clone();
 
-    if let Some(handler_lock) = manager.get(guild_id) {
+    if let Some(handler_lock) = songbird.get(guild_id) {
         let mut handler = handler_lock.lock().await;
 
         // Stop the songbird queue
@@ -257,7 +279,7 @@ pub async fn stop(ctx: Context<'_>) -> Result<(), serenity::Error> {
 
 /// Displays the current queue
 #[poise::command(slash_command, prefix_command, guild_only)]
-pub async fn show_queue(ctx: Context<'_>) -> Result<(), serenity::Error> {
+pub async fn show_queue(ctx: Context<'_>) -> Result<(), crack_types::Error> {
     // Immediately acknowledge the interaction to prevent timeout
     ctx.defer().await?;
 
@@ -268,14 +290,14 @@ pub async fn show_queue(ctx: Context<'_>) -> Result<(), serenity::Error> {
 
 /// Shuffles the queue
 #[poise::command(slash_command, prefix_command, guild_only)]
-pub async fn shuffle(ctx: Context<'_>) -> Result<(), serenity::Error> {
+pub async fn shuffle(ctx: Context<'_>) -> Result<(), crack_types::Error> {
     // Immediately acknowledge the interaction to prevent timeout
     ctx.defer().await?;
 
     let guild_id = ctx.guild_id().unwrap();
-    let manager = ctx.data().songbird.clone();
+    let songbird = ctx.data().songbird.clone();
 
-    if let Some(handler_lock) = manager.get(guild_id) {
+    if let Some(handler_lock) = songbird.get(guild_id) {
         let handler = handler_lock.lock().await;
 
         handler.queue().current_queue().shuffle(&mut rand::rng());

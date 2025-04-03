@@ -109,7 +109,7 @@ thread_local! {
 }
 
 /// Log the start of a command execution (pre-command hook)
-pub fn log_command_start(ctx: Context<'_, Data, serenity::Error>) {
+pub fn log_command_start(ctx: Context<'_, Data, crack_types::Error>) {
     // Store the start time for later use in post_command
     COMMAND_START_TIME.with(|cell| {
         *cell.borrow_mut() = Some(Instant::now());
@@ -142,7 +142,7 @@ pub fn log_command_start(ctx: Context<'_, Data, serenity::Error>) {
 }
 
 /// Log the end of a command execution (post-command hook)
-pub fn log_command_end(ctx: Context<'_, Data, serenity::Error>) {
+pub fn log_command_end(ctx: Context<'_, Data, crack_types::Error>) {
     // Calculate execution time
     let duration =
         COMMAND_START_TIME.with(|cell| cell.borrow_mut().take().map(|start| start.elapsed()));
@@ -166,7 +166,7 @@ pub fn log_command_end(ctx: Context<'_, Data, serenity::Error>) {
 }
 
 /// Log errors that occur during command execution
-pub fn log_command_error(error: &FrameworkError<'_, Data, serenity::Error>) {
+pub fn log_command_error(error: &FrameworkError<'_, Data, crack_types::Error>) {
     match error {
         FrameworkError::Command { error, ctx, .. } => {
             let command_name = ctx.command().qualified_name.clone();
@@ -209,7 +209,7 @@ pub fn log_command_error(error: &FrameworkError<'_, Data, serenity::Error>) {
         err => {
             error!(
                 target: "cracktunes::error",
-                error_type = %std::any::type_name::<FrameworkError<'_, Data, serenity::Error>>(),
+                error_type = %std::any::type_name::<FrameworkError<'_, Data, crack_types::Error>>(),
                 error = ?err,
                 "Other framework error"
             );
