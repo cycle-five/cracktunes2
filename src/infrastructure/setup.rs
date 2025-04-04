@@ -22,7 +22,7 @@ pub struct AppServices {
 }
 
 /// Initialize all adapters and services
-pub async fn initialize_services(
+pub fn initialize_services(
     http: Arc<Http>,
     songbird: Arc<songbird::Songbird>,
 ) -> Result<AppServices, Box<dyn std::error::Error + Send + Sync>> {
@@ -60,7 +60,8 @@ pub struct Data {
 }
 
 impl Data {
-    #[must_use] pub fn new(services: AppServices) -> Self {
+    #[must_use]
+    pub fn new(services: AppServices) -> Self {
         Self {
             services,
             start_time: std::time::Instant::now(),

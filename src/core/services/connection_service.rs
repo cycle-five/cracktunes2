@@ -69,11 +69,14 @@ where
         }
 
         // Get the last activity timestamp
-        let last_activity = if let Some(timestamp) = self.state_manager.get_last_activity(guild_id).await? { timestamp } else {
-            // No activity recorded, update it now as a starting point
-            self.state_manager.update_last_activity(guild_id).await?;
-            return Ok(false);
-        };
+        let last_activity =
+            if let Some(timestamp) = self.state_manager.get_last_activity(guild_id).await? {
+                timestamp
+            } else {
+                // No activity recorded, update it now as a starting point
+                self.state_manager.update_last_activity(guild_id).await?;
+                return Ok(false);
+            };
 
         // Get current time
         let now = std::time::SystemTime::now()
@@ -95,7 +98,7 @@ where
     }
 
     /// Check connection state for a user and the bot
-    pub async fn check_connection_state(
+    pub fn check_connection_state(
         &self,
         _guild_id: GuildId,
         user_channel_id: Option<VoiceChannelId>,

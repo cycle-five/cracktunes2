@@ -345,7 +345,7 @@ where
                 Some(&current),
                 queue_items,
                 None,
-                Some(0x3498DB), // Blue color
+                Some(0x0034_98DB), // Blue color
             )
             .await?;
 

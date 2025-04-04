@@ -4,7 +4,9 @@ use crate::core::{
 };
 use crate::infrastructure::setup::Data;
 
-/// Utility functions for commands
+// --
+// Utility functions for commands
+// --
 
 /// Get the current guild ID or return an error
 pub fn get_guild_id(ctx: poise::Context<'_, Data, AppError>) -> Result<GuildId, AppError> {
@@ -46,7 +48,7 @@ pub fn get_user(ctx: poise::Context<'_, Data, AppError>) -> User {
 
 #[allow(dead_code)]
 /// Get the bot's voice channel in the current guild, if any
-pub async fn get_bot_voice_channel(
+pub fn get_bot_voice_channel(
     ctx: poise::Context<'_, Data, AppError>,
 ) -> Result<Option<VoiceChannelId>, AppError> {
     //let guild_id = get_guild_id(ctx)?;

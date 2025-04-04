@@ -101,9 +101,11 @@ mod tests {
         assert_eq!(config.idle_timeout_minutes, Some(5));
 
         // Set custom config
-        let mut custom_config = GuildConfig::default();
-        custom_config.idle_timeout_minutes = Some(10);
-        custom_config.default_volume = 0.8;
+        let custom_config = GuildConfig {
+            idle_timeout_minutes: Some(10),
+            default_volume: 0.8,
+            ..Default::default()
+        };
 
         manager
             .set_guild_config(guild_id, &custom_config)
@@ -112,8 +114,8 @@ mod tests {
 
         // Get custom config
         let retrieved = manager.get_guild_config(guild_id).await.unwrap();
-        assert_eq!(retrieved.idle_timeout_minutes, Some(10 as u64));
-        assert_eq!(retrieved.default_volume, 0.8 as f32);
+        assert_eq!(retrieved.idle_timeout_minutes, Some(10_u64));
+        assert!(retrieved.default_volume.eq(&0.8_f32));
     }
 
     #[tokio::test]
