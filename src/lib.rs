@@ -1,4 +1,6 @@
 #![feature(iter_chain)]
+
+// Original architecture - will be gradually phased out
 pub mod event_handlers;
 pub use event_handlers::*;
 pub mod logging;
@@ -8,18 +10,24 @@ pub use connection::*;
 pub mod commands;
 pub use commands::*;
 
+// New hexagonal architecture
+pub mod adapters;
+pub mod core;
+pub mod infrastructure;
+
 #[cfg(test)]
 pub mod test;
 
-// Define the context type for poise
+// Define the context type for poise (legacy)
 pub type Context<'a> = poise::Context<'a, Data, crack_types::Error>;
+pub type Error = crack_types::Error;
 
 //------------------------------------
 // crack_types imports
 //------------------------------------
 // use crack_osint::ipqs::IpqsClient;
 use crack_types::http::parse_url;
-use crack_types::{Error, QueryType};
+use crack_types::QueryType;
 //------------------------------------
 // External library imports
 //------------------------------------

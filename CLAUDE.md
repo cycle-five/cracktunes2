@@ -13,8 +13,9 @@
 
 ## Code Style Guidelines
 - **Error Handling**: Use `thiserror` for error types, return `Result<T, crack_types::Error>`
-- **Logging**: Use `tracing` (`debug`, `info`, `error`) with appropriate targets.
-    Use logging.rs module with appropriate prefixes for significant spots in the code.
+- **Logging**: 
+    - Use `tracing` (`debug`, `info`, `error`) with appropriate targets.
+    - Use logging.rs module with appropriate prefixes for significant spots in the code.
 - **Formatting**: Follow standard Rust formatting (via `rustfmt`)
 - **Imports**: Group imports by crate, alphabetically, with internal crates first
 - **Naming**: Snake case for variables/functions, CamelCase for types, SCREAMING_SNAKE for constants

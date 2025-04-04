@@ -781,6 +781,7 @@ name = "cracktunes"
 version = "0.5.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "audiopus",
  "clap",
  "crack-types",
@@ -794,6 +795,8 @@ dependencies = [
  "reqwest",
  "rspotify",
  "rusty_ytdl",
+ "serde",
+ "serde_json",
  "serenity",
  "songbird",
  "symphonia",
