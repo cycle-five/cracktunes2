@@ -1,19 +1,12 @@
 #![feature(iter_chain)]
 
-use std::sync::Arc;
-
 use poise::serenity_prelude as serenity;
-use serenity::{all::{EventHandler, GuildId, Token}, async_trait, client::Context as SerenityContext, prelude::GatewayIntents, FullEvent};
+use serenity::{all::{EventHandler, Http, Token}, async_trait, client::Context as SerenityContext, prelude::GatewayIntents, FullEvent};
+use std::sync::Arc;
 
 use tracing::{debug, error, info};
 
-// Import our modules
-mod core;
-mod adapters;
-mod infrastructure;
-mod commands;
-
-use crate::{
+use cracktunes::{
     core::models::error::AppError,
     infrastructure::{
         error_handling::handle_error,
@@ -67,52 +60,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Create Songbird voice client
     let songbird = songbird::Songbird::serenity();
 
-    // Set up the poise framework
-    let framework = poise::Framework::builder()
-        .options(poise::FrameworkOptions {
-            commands: get_all_v2_commands(),
-            on_error: |error| {
-                Box::pin(async move {
-                    match error {
-                        poise::FrameworkError::Command { error, ctx, .. } => {
-                            handle_error(error, &ctx).await;
-                        }
-                        err => {
-                            error!("Poise framework error: {:?}", err);
-                        }
-                    }
-                })
-            },
-            // Configure additional options as needed
-            ..Default::default()
-        })
-        .token(token.clone())
-        .intents(intents)
-        .client_settings(|client_builder| {
-            client_builder.voice_manager_arc(songbird.clone())
-        })
-        .setup(|ctx, ready, framework| {
-            Box::pin(async move {
-                // Initialize our services
-                let services = initialize_services(ctx.http.clone(), songbird.clone()).await?;
-                
-                // Create Data container for commands
-                let data = Data::new(services);
-                
-                Ok(data)
-            })
-        });
-
-    // Generate list of commands for registering
+    // Generate command list for the event handler
     let commands = get_all_v2_commands();
     
     // Create event handler
     let handler = Handler { commands };
 
-    // Create and run the client
+    // Initialize services
+    let services = initialize_services(Arc::new(Http::new(token.clone())), songbird.clone()).await?;
+    
+    // Create Data container for commands
+    let data = Data::new(services);
+    
+    // Create the client with regular event handlers
     let mut client = serenity::ClientBuilder::new(token, intents)
         .event_handler(handler)
-        .framework(framework)
+        .data(Arc::new(data))
         .await?;
 
     // Log the start of the client

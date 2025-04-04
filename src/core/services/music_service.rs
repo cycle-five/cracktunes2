@@ -10,6 +10,7 @@ use crate::core::{
 use std::sync::Arc;
 
 /// Service responsible for all music-related functionality
+#[derive(Debug)]
 pub struct MusicService<A, P, M, S>
 where
     A: AudioProvider,

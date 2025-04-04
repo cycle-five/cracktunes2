@@ -73,7 +73,11 @@ This script will:
 
 5. Run the bot (requires a Discord token):
    ```bash
+   # Run the original architecture
    DISCORD_TOKEN=your_token_here cargo run
+   
+   # Run the new hexagonal architecture
+   DISCORD_TOKEN=your_token_here cargo run --bin cracktunes-v2
    ```
 
 ## Docker Deployment
@@ -199,10 +203,33 @@ CrackTunes exclusively uses Discord's slash command system for all interactions.
 
 CrackTunes is built with a focus on performance and reliability:
 
+### Classic Architecture
 - **Queue System**: Thread-safe implementation using `Arc<Mutex<>>` allows concurrent access to track queues
 - **Track Resolution**: Support for multiple music sources with a unified resolution system
 - **Event Handling**: Robust event system for handling Discord events and playback state changes
 - **Dockerized Deployment**: Containerized for consistent deployment across environments
+
+### New Hexagonal Architecture (v2)
+CrackTunes is transitioning to a more modular, hexagonal architecture with:
+
+- **Core Domain**: Contains business logic and domain models
+  - **Ports**: Define interfaces that adapters must implement
+  - **Services**: Implement business use cases using ports
+  - **Models**: Domain entities and value objects
+  
+- **Adapters**: Implement ports to connect with external services
+  - **Discord Adapter**: Implements message handling and audio playback
+  - **YouTube Adapter**: Implements audio source provider
+  - **Storage Adapter**: Implements state management
+  
+- **Infrastructure**: Wiring, configuration, and technical concerns
+  - **Setup**: Initializes and wires all components together
+  - **Error Handling**: Centralized error handling
+
+To run the bot with the new architecture, use:
+```bash
+./scripts/run-v2.sh
+```
 
 ## Troubleshooting
 

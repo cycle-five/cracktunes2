@@ -28,6 +28,7 @@ pub enum ConnectionState {
 }
 
 /// Service for managing voice connections and channel monitoring
+#[derive(Debug)]
 pub struct ConnectionService<P, S>
 where
     P: AudioPlayer,

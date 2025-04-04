@@ -5,6 +5,7 @@ use std::sync::Arc;
 use crate::core::ports::state_manager::{StateManager, StateManagerError, StateManagerResult};
 
 /// In-memory implementation of StateManager for development and testing
+#[derive(Debug)]
 pub struct MemoryStateManager {
     data: Arc<DashMap<String, String>>,
 }

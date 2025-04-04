@@ -9,6 +9,7 @@ use rusty_ytdl::{
 use std::sync::Arc;
 
 /// Implementation of AudioProvider using rusty_ytdl
+#[derive(Debug)]
 pub struct RustyYtdlProvider {
     client: reqwest::Client,
     ytdl: YouTube,

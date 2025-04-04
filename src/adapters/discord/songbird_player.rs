@@ -26,6 +26,7 @@ struct TrackRequestInfo {
 }
 
 /// Implementation of AudioPlayer using Songbird
+#[derive(Debug)]
 pub struct SongbirdPlayer {
     songbird: Arc<Songbird>,
     // Maps guild ID to notification channel

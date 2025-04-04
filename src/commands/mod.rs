@@ -3,8 +3,7 @@ pub mod music;
 pub use music::{join, leave, play, show_queue, shuffle, skip, stop};
 
 // New hexagonal architecture command modules
-mod v2;
-pub use v2::*;
+pub mod v2;
 
 use crate::Data;
 use poise::Command;

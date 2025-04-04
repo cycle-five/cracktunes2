@@ -14,6 +14,14 @@ rust-version = "1.88"
 # repository = "https://git.sr.ht/~cycle-five/cracktunes"
 repository = "https://github.com/cycle-five/cracktunes"
 
+[[bin]]
+name = "cracktunes"
+path = "src/main.rs"
+
+[[bin]]
+name = "cracktunes-v2"
+path = "src/main_v2.rs"
+
 
 [features]
 default = ["crack-tracing"]

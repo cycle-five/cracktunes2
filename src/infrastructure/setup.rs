@@ -13,7 +13,7 @@ use crate::{
 };
 
 /// App services container - holds all the core services
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct AppServices {
     pub music_service: Arc<
         MusicService<RustyYtdlProvider, SongbirdPlayer, SerenityMessageHandler, MemoryStateManager>,
@@ -53,6 +53,7 @@ pub async fn initialize_services(
 }
 
 /// App data container for poise framework - contains core services and other framework data
+#[derive(Debug)]
 pub struct Data {
     pub services: AppServices,
     pub start_time: std::time::Instant,

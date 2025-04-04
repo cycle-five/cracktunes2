@@ -43,6 +43,8 @@ pub fn init() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let console_layer = fmt::layer()
         .with_span_events(FmtSpan::CLOSE)
         .with_target(true)
+        .with_file(true)
+        .with_line_number(true)
         .with_ansi(true);
     // .with_filter(FilterFn::new(|metadata| {
     //     metadata.target().starts_with("cracktunes")
