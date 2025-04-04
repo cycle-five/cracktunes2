@@ -81,11 +81,6 @@ static YOUTUBE_CLIENT: LazyLock<rusty_ytdl::search::YouTube> = LazyLock::new(|| 
         .unwrap_or_else(|_| panic!("{NEW_FAILED} {YOUTUBE_CLIENT_STR}"))
 });
 
-// static CRACK_TRACK_CLIENT: LazyLock<CrackTrackClient> = LazyLock::new(|| {
-//     println!("{CREATING}: CrackTrackClient...");
-//     CrackTrackClient::new_with_clients(REQ_CLIENT.clone(), YOUTUBE_CLIENT.clone())
-// });
-
 /// Build a configured reqwest client for use in the `CrackTrackClient`.
 ///
 /// # Panics
