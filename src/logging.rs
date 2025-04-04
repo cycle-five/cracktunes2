@@ -1,4 +1,5 @@
-use crate::Data;
+use crate::core::models::error::AppError;
+use crate::{Data, infrastructure::setup::Data as V2Data};
 use poise::serenity_prelude as serenity;
 use poise::{Context, FrameworkError};
 use std::path::Path;
@@ -110,27 +111,17 @@ thread_local! {
     static COMMAND_START_TIME: std::cell::RefCell<Option<Instant>> = const { std::cell::RefCell::new(None) };
 }
 
-/// Log the start of a command execution (pre-command hook)
-pub fn log_command_start(ctx: Context<'_, Data, crack_types::Error>) {
+/// Core logging function for command start
+fn log_command_start_core(
+    command_name: &str,
+    guild_id: &str,
+    user_id: &str,
+    args: &str,
+) {
     // Store the start time for later use in post_command
     COMMAND_START_TIME.with(|cell| {
         *cell.borrow_mut() = Some(Instant::now());
     });
-
-    let command_name = ctx.command().qualified_name.clone();
-    let guild_id = ctx
-        .guild_id()
-        .map_or_else(|| "DM".to_string(), |id| id.get().to_string());
-    let user_id = ctx.author().id.get().to_string();
-
-    // Attempt to format arguments
-    let args = if ctx.command().parameters.is_empty() {
-        String::new()
-    } else {
-        // This is a simplified approach - in a real scenario you'd want to
-        // extract the actual arguments more carefully
-        format!("{:?}", ctx.invocation_string())
-    };
 
     info!(
         target: "cracktunes::command",
@@ -143,17 +134,15 @@ pub fn log_command_start(ctx: Context<'_, Data, crack_types::Error>) {
     );
 }
 
-/// Log the end of a command execution (post-command hook)
-pub fn log_command_end(ctx: Context<'_, Data, crack_types::Error>) {
+/// Core logging function for command end
+fn log_command_end_core(
+    command_name: &str,
+    guild_id: &str,
+    user_id: &str,
+) {
     // Calculate execution time
     let duration =
         COMMAND_START_TIME.with(|cell| cell.borrow_mut().take().map(|start| start.elapsed()));
-
-    let command_name = ctx.command().qualified_name.clone();
-    let guild_id = ctx
-        .guild_id()
-        .map_or_else(|| "DM".to_string(), |id| id.get().to_string());
-    let user_id = ctx.author().id.get().to_string();
 
     let duration_ms = u64::try_from(duration.map_or(0, |d| d.as_millis())).unwrap_or_default();
     info!(
@@ -167,7 +156,84 @@ pub fn log_command_end(ctx: Context<'_, Data, crack_types::Error>) {
     );
 }
 
-/// Log errors that occur during command execution
+/// Core logging function for command errors
+fn log_command_error_core(
+    command_name: &str,
+    guild_id: &str,
+    user_id: &str,
+    error_msg: &str,
+    error_type: &str,
+) {
+    error!(
+        target: "cracktunes::error",
+        command = %command_name,
+        guild_id = %guild_id,
+        user_id = %user_id,
+        error = %error_msg,
+        error_type = %error_type,
+        "Command error"
+    );
+}
+
+/// Core logging function for command check failures
+fn log_command_check_failed_core(
+    command_name: &str,
+    guild_id: &str,
+    user_id: &str,
+    error_msg: &str,
+) {
+    error!(
+        target: "cracktunes::error",
+        command = %command_name,
+        guild_id = %guild_id,
+        user_id = %user_id,
+        error = %error_msg,
+        "Command check failed"
+    );
+}
+
+/// Core logging function for other framework errors
+fn log_other_framework_error_core(error_type: &str, error: &str) {
+    error!(
+        target: "cracktunes::error",
+        error_type = %error_type,
+        error = %error,
+        "Other framework error"
+    );
+}
+
+// ----- Original architecture logging functions -----
+
+/// Log the start of a command execution (pre-command hook) - Original architecture
+pub fn log_command_start(ctx: Context<'_, Data, crack_types::Error>) {
+    let command_name = ctx.command().qualified_name.clone();
+    let guild_id = ctx
+        .guild_id()
+        .map_or_else(|| "DM".to_string(), |id| id.get().to_string());
+    let user_id = ctx.author().id.get().to_string();
+
+    // Attempt to format arguments
+    let args = if ctx.command().parameters.is_empty() {
+        String::new()
+    } else {
+        format!("{:?}", ctx.invocation_string())
+    };
+
+    log_command_start_core(&command_name, &guild_id, &user_id, &args);
+}
+
+/// Log the end of a command execution (post-command hook) - Original architecture
+pub fn log_command_end(ctx: Context<'_, Data, crack_types::Error>) {
+    let command_name = ctx.command().qualified_name.clone();
+    let guild_id = ctx
+        .guild_id()
+        .map_or_else(|| "DM".to_string(), |id| id.get().to_string());
+    let user_id = ctx.author().id.get().to_string();
+
+    log_command_end_core(&command_name, &guild_id, &user_id);
+}
+
+/// Log errors that occur during command execution - Original architecture
 pub fn log_command_error(error: &FrameworkError<'_, Data, crack_types::Error>) {
     match error {
         FrameworkError::Command { error, ctx, .. } => {
@@ -178,13 +244,12 @@ pub fn log_command_error(error: &FrameworkError<'_, Data, crack_types::Error>) {
                 .map_or_else(|| "DM".to_string(), ToString::to_string);
             let user_id = ctx.author().id.get().to_string();
 
-            error!(
-                target: "cracktunes::error",
-                command = %command_name,
-                guild_id = %guild_id,
-                user_id = %user_id,
-                error = %error,
-                "Command error"
+            log_command_error_core(
+                &command_name, 
+                &guild_id, 
+                &user_id, 
+                &error.to_string(),
+                "CommandError",
             );
         }
         FrameworkError::CommandCheckFailed { error, ctx, .. } => {
@@ -199,21 +264,95 @@ pub fn log_command_error(error: &FrameworkError<'_, Data, crack_types::Error>) {
                 .as_ref()
                 .map_or_else(|| "Check failed".to_string(), ToString::to_string);
 
-            error!(
-                target: "cracktunes::error",
-                command = %command_name,
-                guild_id = %guild_id,
-                user_id = %user_id,
-                error = %error_msg,
-                "Command check failed"
+            log_command_check_failed_core(
+                &command_name,
+                &guild_id,
+                &user_id,
+                &error_msg,
             );
         }
         err => {
-            error!(
-                target: "cracktunes::error",
-                error_type = %std::any::type_name::<FrameworkError<'_, Data, crack_types::Error>>(),
-                error = ?err,
-                "Other framework error"
+            log_other_framework_error_core(
+                std::any::type_name::<FrameworkError<'_, Data, crack_types::Error>>(),
+                &format!("{err:?}"),
+            );
+        }
+    }
+}
+
+// ----- New architecture logging functions -----
+
+/// Log the start of a command execution (pre-command hook) - New architecture
+pub fn log_command_start_v2(ctx: Context<'_, V2Data, AppError>) {
+    let command_name = ctx.command().qualified_name.clone();
+    let guild_id = ctx
+        .guild_id()
+        .map_or_else(|| "DM".to_string(), |id| id.get().to_string());
+    let user_id = ctx.author().id.get().to_string();
+
+    // Attempt to format arguments
+    let args = if ctx.command().parameters.is_empty() {
+        String::new()
+    } else {
+        format!("{:?}", ctx.invocation_string())
+    };
+
+    log_command_start_core(&command_name, &guild_id, &user_id, &args);
+}
+
+/// Log the end of a command execution (post-command hook) - New architecture
+pub fn log_command_end_v2(ctx: Context<'_, V2Data, AppError>) {
+    let command_name = ctx.command().qualified_name.clone();
+    let guild_id = ctx
+        .guild_id()
+        .map_or_else(|| "DM".to_string(), |id| id.get().to_string());
+    let user_id = ctx.author().id.get().to_string();
+
+    log_command_end_core(&command_name, &guild_id, &user_id);
+}
+
+/// Log errors that occur during command execution - New architecture
+pub fn log_command_error_v2(error: &FrameworkError<'_, V2Data, AppError>) {
+    match error {
+        FrameworkError::Command { error, ctx, .. } => {
+            let command_name = ctx.command().qualified_name.clone();
+            let guild_id = ctx
+                .guild_id()
+                .as_ref()
+                .map_or_else(|| "DM".to_string(), ToString::to_string);
+            let user_id = ctx.author().id.get().to_string();
+
+            log_command_error_core(
+                &command_name, 
+                &guild_id, 
+                &user_id, 
+                &error.to_string(),
+                "AppError",
+            );
+        }
+        FrameworkError::CommandCheckFailed { error, ctx, .. } => {
+            let command_name = ctx.command().qualified_name.clone();
+            let guild_id = ctx
+                .guild_id()
+                .as_ref()
+                .map_or_else(|| "DM".to_string(), ToString::to_string);
+            let user_id = ctx.author().id.get().to_string();
+
+            let error_msg = error
+                .as_ref()
+                .map_or_else(|| "Check failed".to_string(), ToString::to_string);
+
+            log_command_check_failed_core(
+                &command_name,
+                &guild_id,
+                &user_id,
+                &error_msg,
+            );
+        }
+        err => {
+            log_other_framework_error_core(
+                std::any::type_name::<FrameworkError<'_, V2Data, AppError>>(),
+                &format!("{err:?}"),
             );
         }
     }

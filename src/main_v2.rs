@@ -16,6 +16,7 @@ use cracktunes::{
     commands::v2::get_all_v2_commands,
     core::models::error::AppError,
     infrastructure::setup::{initialize_services, Data},
+    logging::{log_command_start_v2, log_command_end_v2, log_command_error_v2},
 };
 
 struct Handler {
@@ -71,7 +72,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let framework_commands = get_all_v2_commands();
 
     // Create event handler
-    let handler = Handler { commands: handler_commands };
+    let handler = Handler {
+        commands: handler_commands,
+    };
 
     // Set up the poise framework with command hooks for logging
     let framework = poise::Framework::builder()
@@ -80,23 +83,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             // Add pre-command hook for logging command start
             pre_command: |ctx| {
                 Box::pin(async move {
-                    info!("Executing command: {}", ctx.command().qualified_name);
+                    log_command_start_v2(ctx);
                 })
             },
             // Add post-command hook for logging command end
             post_command: |ctx| {
                 Box::pin(async move {
-                    info!("Command completed: {}", ctx.command().qualified_name);
+                    log_command_end_v2(ctx);
                 })
             },
             on_error: |error| {
                 Box::pin(async move {
+                    // Log the error using our logging system
+                    log_command_error_v2(&error);
+                    
                     // Handle the error for user feedback
                     match error {
                         poise::FrameworkError::Command { error, ctx, .. } => {
                             let cmd_name = &ctx.command().name;
                             error!("Error in command `{cmd_name}`: {error:?}");
-                            
+
                             if let Err(e) = ctx.say(format!("An error occurred: {error}")).await {
                                 error!("Error while sending error message: {e:?}");
                             }
@@ -105,7 +111,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                             error!("Command check failed: {error:?}");
 
                             if let Some(error) = error {
-                                if let Err(e) = ctx.say(format!("Command check failed: {error}")).await {
+                                if let Err(e) =
+                                    ctx.say(format!("Command check failed: {error}")).await
+                                {
                                     error!("Error while sending check failure message: {:?}", e);
                                 }
                             }
@@ -122,11 +130,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     // Initialize services
     let services = initialize_services(Arc::new(Http::new(token.clone())), songbird.clone())?;
-    
+
     // Create Data container for commands
     let data = Data::new(services);
     let arc_data = Arc::new(data);
-    
+
     // Create the client with both the framework and regular event handlers
     let mut client = serenity::ClientBuilder::new(token, intents)
         .event_handler(handler)
@@ -173,7 +181,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     // Log the start of the client
     info!("Starting client");
-    
+
     // Run the client with autosharding
     let _ = client
         .start_autosharded()
