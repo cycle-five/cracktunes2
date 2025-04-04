@@ -8,7 +8,7 @@ use rusty_ytdl::{
 };
 use std::sync::Arc;
 
-/// Implementation of AudioProvider using rusty_ytdl
+/// Implementation of `AudioProvider` using `rusty_ytdl`
 #[derive(Debug)]
 pub struct RustyYtdlProvider {
     client: reqwest::Client,
@@ -82,7 +82,7 @@ impl RustyYtdlProvider {
                 if let Ok(seconds) = length_seconds.parse::<u64>() {
                     let minutes = seconds / 60;
                     let remaining_seconds = seconds % 60;
-                    Some(format!("{}:{:02}", minutes, remaining_seconds))
+                    Some(format!("{minutes}:{remaining_seconds:02}"))
                 } else {
                     None
                 }
@@ -167,7 +167,7 @@ impl AudioProvider for RustyYtdlProvider {
     }
 }
 
-pub fn build_mock_rusty_ytdl_video() -> rusty_ytdl::search::Video {
+#[must_use] pub fn build_mock_rusty_ytdl_video() -> rusty_ytdl::search::Video {
     rusty_ytdl::search::Video {
         id: "test-id".to_string(),
         title: "Test Video".to_string(),

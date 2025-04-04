@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use super::audio_player::GuildId;
 use std::time::Duration;
 
-/// Error type for StateManager operations
+/// Error type for `StateManager` operations
 #[derive(Debug, thiserror::Error)]
 pub enum StateManagerError {
     #[error("Key not found")]
@@ -24,7 +24,7 @@ pub enum StateManagerError {
     Other(String),
 }
 
-/// Result type for StateManager operations
+/// Result type for `StateManager` operations
 pub type StateManagerResult<T> = Result<T, StateManagerError>;
 
 /// Guild-specific configuration

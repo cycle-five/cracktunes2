@@ -20,7 +20,7 @@ impl User {
         self
     }
     
-    pub fn display_name(&self) -> &str {
+    #[must_use] pub fn display_name(&self) -> &str {
         self.display_name.as_deref().unwrap_or(&self.name)
     }
 }

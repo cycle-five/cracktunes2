@@ -1,7 +1,7 @@
 use super::audio_player::{GuildId, TextChannelId};
 use async_trait::async_trait;
 
-/// Error type for MessageHandler operations
+/// Error type for `MessageHandler` operations
 #[derive(Debug, thiserror::Error)]
 pub enum MessageHandlerError {
     #[error("Failed to send message: {0}")]
@@ -20,7 +20,7 @@ pub enum MessageHandlerError {
     Other(String),
 }
 
-/// Result type for MessageHandler operations
+/// Result type for `MessageHandler` operations
 pub type MessageHandlerResult<T> = Result<T, MessageHandlerError>;
 
 /// Interface for sending messages to users on the platform

@@ -25,7 +25,7 @@ struct TrackRequestInfo {
     requester_id: String,
 }
 
-/// Implementation of AudioPlayer using Songbird
+/// Implementation of `AudioPlayer` using Songbird
 #[derive(Debug)]
 pub struct SongbirdPlayer {
     songbird: Arc<Songbird>,
@@ -42,7 +42,7 @@ impl SongbirdPlayer {
         }
     }
 
-    /// Helper method to convert AudioStream to Songbird input
+    /// Helper method to convert `AudioStream` to Songbird input
     fn convert_to_songbird_input(stream: AudioStream) -> Result<SongbirdInput, AudioPlayerError> {
         // Extract the provider data which should be a rusty_ytdl::Video
         let provider_data = stream.provider_data;
@@ -79,7 +79,7 @@ impl SongbirdPlayer {
         let track_state = track_handle
             .get_info()
             .await
-            .map_err(|e| AudioPlayerError::Other(format!("Failed to get track info: {}", e)))?;
+            .map_err(|e| AudioPlayerError::Other(format!("Failed to get track info: {e}")))?;
 
         // We would get the metadata from the track state, but that requires changes to the songbird API
         // For now, create basic metadata
@@ -157,7 +157,7 @@ impl AudioPlayer for SongbirdPlayer {
 
             if let Some(current) = channel {
                 // Simply compare the string representation of both channel IDs
-                let current_str = format!("{:?}", current);
+                let current_str = format!("{current:?}");
                 let channel_id_str = format!("{}", channel_id.0);
                 if current_str.contains(&channel_id_str) {
                     // Already connected to this channel
@@ -189,7 +189,7 @@ impl AudioPlayer for SongbirdPlayer {
             .remove(serenity::GuildId::new(guild_id.0))
             .await
         {
-            Ok(_) => Ok(()),
+            Ok(()) => Ok(()),
             Err(e) => Err(AudioPlayerError::LeaveError(e.to_string())),
         }
     }
@@ -259,7 +259,7 @@ impl AudioPlayer for SongbirdPlayer {
         handler
             .queue()
             .skip()
-            .map_err(|e| AudioPlayerError::Other(format!("Failed to skip track: {}", e)))?;
+            .map_err(|e| AudioPlayerError::Other(format!("Failed to skip track: {e}")))?;
 
         Ok(())
     }
@@ -271,7 +271,7 @@ impl AudioPlayer for SongbirdPlayer {
         if let Some(track) = handler.queue().current() {
             track
                 .pause()
-                .map_err(|e| AudioPlayerError::Other(format!("Failed to pause track: {}", e)))?;
+                .map_err(|e| AudioPlayerError::Other(format!("Failed to pause track: {e}")))?;
         }
 
         Ok(())
@@ -284,7 +284,7 @@ impl AudioPlayer for SongbirdPlayer {
         if let Some(track) = handler.queue().current() {
             track
                 .play()
-                .map_err(|e| AudioPlayerError::Other(format!("Failed to resume track: {}", e)))?;
+                .map_err(|e| AudioPlayerError::Other(format!("Failed to resume track: {e}")))?;
         }
 
         Ok(())
@@ -324,7 +324,7 @@ impl AudioPlayer for SongbirdPlayer {
         if let Some(track) = handler.queue().current() {
             track
                 .set_volume(volume)
-                .map_err(|e| AudioPlayerError::Other(format!("Failed to set volume: {}", e)))?;
+                .map_err(|e| AudioPlayerError::Other(format!("Failed to set volume: {e}")))?;
         }
 
         Ok(())
@@ -338,7 +338,7 @@ impl AudioPlayer for SongbirdPlayer {
             let state = track
                 .get_info()
                 .await
-                .map_err(|e| AudioPlayerError::Other(format!("Failed to get track info: {}", e)))?;
+                .map_err(|e| AudioPlayerError::Other(format!("Failed to get track info: {e}")))?;
             Ok(state.volume)
         } else {
             Ok(1.0) // Default volume
@@ -352,7 +352,7 @@ impl AudioPlayer for SongbirdPlayer {
         handler
             .mute(true)
             .await
-            .map_err(|e| AudioPlayerError::Other(format!("Failed to mute: {}", e)))?;
+            .map_err(|e| AudioPlayerError::Other(format!("Failed to mute: {e}")))?;
 
         Ok(())
     }
@@ -364,7 +364,7 @@ impl AudioPlayer for SongbirdPlayer {
         handler
             .mute(false)
             .await
-            .map_err(|e| AudioPlayerError::Other(format!("Failed to unmute: {}", e)))?;
+            .map_err(|e| AudioPlayerError::Other(format!("Failed to unmute: {e}")))?;
 
         Ok(())
     }

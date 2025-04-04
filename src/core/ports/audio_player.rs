@@ -60,7 +60,7 @@ pub struct QueuedTrack {
     pub duration: Option<std::time::Duration>,
 }
 
-/// Error type for AudioPlayer operations
+/// Error type for `AudioPlayer` operations
 #[derive(Debug, thiserror::Error)]
 pub enum AudioPlayerError {
     #[error("Not connected to a voice channel")]
@@ -88,7 +88,7 @@ pub enum AudioPlayerError {
     Other(String),
 }
 
-/// Result type for AudioPlayer operations
+/// Result type for `AudioPlayer` operations
 pub type AudioPlayerResult<T> = Result<T, AudioPlayerError>;
 
 /// Interface for audio playback functionality

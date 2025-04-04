@@ -30,7 +30,7 @@ pub struct AudioStream {
     pub provider_data: Arc<dyn std::any::Any + Send + Sync>,
 }
 
-/// Error type for AudioProvider operations
+/// Error type for `AudioProvider` operations
 #[derive(Debug, thiserror::Error)]
 pub enum AudioProviderError {
     #[error("Failed to search: {0}")]

@@ -52,7 +52,7 @@ pub async fn timeout(
 }
 
 /// Returns all connection-related commands
-pub fn get_connection_commands() -> Vec<poise::Command<Data, AppError>> {
+#[must_use] pub fn get_connection_commands() -> Vec<poise::Command<Data, AppError>> {
     vec![
         join(),
         leave(),

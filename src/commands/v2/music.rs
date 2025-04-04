@@ -165,7 +165,7 @@ pub async fn shuffle(ctx: poise::Context<'_, Data, AppError>) -> Result<(), AppE
 }
 
 /// Returns all music-related commands
-pub fn get_music_commands() -> Vec<poise::Command<Data, AppError>> {
+#[must_use] pub fn get_music_commands() -> Vec<poise::Command<Data, AppError>> {
     vec![
         play(),
         skip(),

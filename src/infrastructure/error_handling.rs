@@ -13,16 +13,16 @@ pub async fn handle_error(
         }
         AppError::NoPermission => "You don't have permission to use this command.".to_string(),
         AppError::AudioProvider(provider_error) => {
-            format!("Audio provider error: {}", provider_error)
+            format!("Audio provider error: {provider_error}")
         }
-        AppError::AudioPlayer(player_error) => format!("Audio player error: {}", player_error),
+        AppError::AudioPlayer(player_error) => format!("Audio player error: {player_error}"),
         AppError::MessageHandler(message_error) => {
-            format!("Message handling error: {}", message_error)
+            format!("Message handling error: {message_error}")
         }
-        AppError::StateManager(state_error) => format!("State management error: {}", state_error),
-        AppError::InvalidArgument(arg) => format!("Invalid argument: {}", arg),
-        AppError::CommandExecution(msg) => format!("Command execution error: {}", msg),
-        AppError::Other(msg) => format!("Error: {}", msg),
+        AppError::StateManager(state_error) => format!("State management error: {state_error}"),
+        AppError::InvalidArgument(arg) => format!("Invalid argument: {arg}"),
+        AppError::CommandExecution(msg) => format!("Command execution error: {msg}"),
+        AppError::Other(msg) => format!("Error: {msg}"),
         AppError::UserNotFound => "User not found.".to_string(),
     };
 
@@ -49,8 +49,8 @@ pub async fn handle_error(
 }
 
 /// Convert the error type from core to framework
-pub fn convert_error(e: AppError) -> String {
+#[must_use] pub fn convert_error(e: AppError) -> String {
     // In a real implementation, this would convert to poise's FrameworkError
     // But for simplicity, we'll just return a string representation
-    format!("Error: {}", e)
+    format!("Error: {e}")
 }

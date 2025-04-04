@@ -69,13 +69,10 @@ where
         }
 
         // Get the last activity timestamp
-        let last_activity = match self.state_manager.get_last_activity(guild_id).await? {
-            Some(timestamp) => timestamp,
-            None => {
-                // No activity recorded, update it now as a starting point
-                self.state_manager.update_last_activity(guild_id).await?;
-                return Ok(false);
-            }
+        let last_activity = if let Some(timestamp) = self.state_manager.get_last_activity(guild_id).await? { timestamp } else {
+            // No activity recorded, update it now as a starting point
+            self.state_manager.update_last_activity(guild_id).await?;
+            return Ok(false);
         };
 
         // Get current time

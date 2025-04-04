@@ -8,10 +8,7 @@ use tracing::{debug, error, info};
 
 use cracktunes::{
     core::models::error::AppError,
-    infrastructure::{
-        error_handling::handle_error,
-        setup::{Data, initialize_services},
-    },
+    infrastructure::setup::{Data, initialize_services},
     commands::v2::get_all_v2_commands,
 };
 

@@ -62,7 +62,7 @@ where
 
         // Send confirmation message
         self.message_handler
-            .send_message(text_channel_id, &format!("Joined voice channel"))
+            .send_message(text_channel_id, "Joined voice channel")
             .await?;
 
         // Mark activity for this guild
@@ -202,7 +202,7 @@ where
         let title = &results[0].title;
         if position == 0 {
             self.message_handler
-                .send_message(text_channel_id, &format!("Playing: {}", title))
+                .send_message(text_channel_id, &format!("Playing: {title}"))
                 .await?;
         } else {
             self.message_handler
@@ -331,7 +331,7 @@ where
 
                 (
                     format!("{}. {}", i + 1, title),
-                    format!("Requested by: {} | Duration: {}", requester, duration),
+                    format!("Requested by: {requester} | Duration: {duration}"),
                     false, // Not inline
                 )
             })
@@ -387,7 +387,7 @@ where
                 self.message_handler
                     .send_message(
                         text_channel_id,
-                        &format!("Idle timeout set to {} minutes", mins),
+                        &format!("Idle timeout set to {mins} minutes"),
                     )
                     .await?;
             }
@@ -485,6 +485,7 @@ mod tests {
     mock! {
         pub MessageHandlerMock {}
 
+        #[allow(clippy::ref_option_ref)]
         #[async_trait]
         impl MessageHandler for MessageHandlerMock {
             async fn send_message(&self, channel_id: TextChannelId, content: &str) -> Result<(), crate::core::ports::message_handler::MessageHandlerError>;

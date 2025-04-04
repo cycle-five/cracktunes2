@@ -60,7 +60,7 @@ pub struct Data {
 }
 
 impl Data {
-    pub fn new(services: AppServices) -> Self {
+    #[must_use] pub fn new(services: AppServices) -> Self {
         Self {
             services,
             start_time: std::time::Instant::now(),

@@ -8,7 +8,7 @@ use crate::core::ports::{
     message_handler::{MessageHandler, MessageHandlerError, MessageHandlerResult},
 };
 
-/// Implementation of MessageHandler using Serenity
+/// Implementation of `MessageHandler` using Serenity
 pub struct SerenityMessageHandler {
     http: Arc<Http>,
     interaction_tokens: dashmap::DashMap<u64, String>, // Store interaction tokens for deferred responses

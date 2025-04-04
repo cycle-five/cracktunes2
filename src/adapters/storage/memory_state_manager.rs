@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::core::ports::state_manager::{StateManager, StateManagerError, StateManagerResult};
 
-/// In-memory implementation of StateManager for development and testing
+/// In-memory implementation of `StateManager` for development and testing
 #[derive(Debug)]
 pub struct MemoryStateManager {
     data: Arc<DashMap<String, String>>,
@@ -12,6 +12,7 @@ pub struct MemoryStateManager {
 
 impl MemoryStateManager {
     /// Create a new in-memory state manager
+    #[must_use]
     pub fn new() -> Self {
         Self {
             data: Arc::new(DashMap::new()),
@@ -111,8 +112,8 @@ mod tests {
 
         // Get custom config
         let retrieved = manager.get_guild_config(guild_id).await.unwrap();
-        assert_eq!(retrieved.idle_timeout_minutes, Some(10));
-        assert_eq!(retrieved.default_volume, 0.8);
+        assert_eq!(retrieved.idle_timeout_minutes, Some(10 as u64));
+        assert_eq!(retrieved.default_volume, 0.8 as f32);
     }
 
     #[tokio::test]
