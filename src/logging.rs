@@ -53,6 +53,8 @@ pub fn init() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .with_span_events(FmtSpan::CLOSE)
         .with_target(true)
         .with_ansi(false)
+        .with_file(true)
+        .with_line_number(true)
         .json()
         .with_writer(command_file)
         .with_filter(FilterFn::new(|metadata| {
@@ -75,6 +77,8 @@ pub fn init() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .with_span_events(FmtSpan::CLOSE)
         .with_target(true)
         .with_ansi(false)
+        .with_file(true)
+        .with_line_number(true)
         .json()
         .with_writer(error_file)
         .with_filter(FilterFn::new(|metadata| {
