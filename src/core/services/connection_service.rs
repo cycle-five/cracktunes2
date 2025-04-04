@@ -234,36 +234,29 @@ mod tests {
 
         // Test mutually connected
         let mutual_channel = VoiceChannelId(456);
-        let state = service
-            .check_connection_state(guild_id, Some(mutual_channel), Some(mutual_channel))
-            .await;
+        let state =
+            service.check_connection_state(guild_id, Some(mutual_channel), Some(mutual_channel));
         assert_eq!(state, ConnectionState::MutuallyConnected(mutual_channel));
 
         // Test separately connected
         let user_channel = VoiceChannelId(456);
         let bot_channel = VoiceChannelId(789);
-        let state = service
-            .check_connection_state(guild_id, Some(user_channel), Some(bot_channel))
-            .await;
+        let state = service.check_connection_state(guild_id, Some(user_channel), Some(bot_channel));
         assert_eq!(
             state,
             ConnectionState::SeparatelyConnected(user_channel, bot_channel)
         );
 
         // Test only user connected
-        let state = service
-            .check_connection_state(guild_id, Some(user_channel), None)
-            .await;
+        let state = service.check_connection_state(guild_id, Some(user_channel), None);
         assert_eq!(state, ConnectionState::UserConnected(user_channel));
 
         // Test only bot connected
-        let state = service
-            .check_connection_state(guild_id, None, Some(bot_channel))
-            .await;
+        let state = service.check_connection_state(guild_id, None, Some(bot_channel));
         assert_eq!(state, ConnectionState::BotConnected(bot_channel));
 
         // Test neither connected
-        let state = service.check_connection_state(guild_id, None, None).await;
+        let state = service.check_connection_state(guild_id, None, None);
         assert_eq!(state, ConnectionState::NeitherConnected);
     }
 
