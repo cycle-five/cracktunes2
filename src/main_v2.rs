@@ -15,8 +15,9 @@ use tracing::{debug, error, info};
 use cracktunes::{
     commands::v2::get_all_v2_commands,
     core::models::error::AppError,
-    infrastructure::setup::{initialize_services, Data},
+    infrastructure::setup::{initialize_services, initialize_services_with_poise, get_global_poise_handler, Data},
     logging::{log_command_start_v2, log_command_end_v2, log_command_error_v2},
+    adapters::discord::poise_message_handler::PoiseMessageHandler,
 };
 
 struct Handler {
@@ -80,10 +81,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
             commands: framework_commands,
-            // Add pre-command hook for logging command start
+            // Add pre-command hook for logging command start and registering context
             pre_command: |ctx| {
                 Box::pin(async move {
+                    // Log command start
                     log_command_start_v2(ctx);
+                    
+                    // Register this channel with the global PoiseMessageHandler
+                    if let Some(handler) = get_global_poise_handler() {
+                        // Get the channel and guild IDs
+                        let channel_id = ctx.channel_id().get();
+                        let guild_id = ctx.guild_id().map(|id| id.get());
+                        
+                        // Register this channel with the handler
+                        tokio::spawn(async move {
+                            handler.register_channel(channel_id, guild_id).await;
+                        });
+                    } else {
+                        debug!("No global PoiseMessageHandler available for context registration");
+                    }
                 })
             },
             // Add post-command hook for logging command end
@@ -128,8 +144,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         })
         .build();
 
-    // Initialize services
-    let services = initialize_services(Arc::new(Http::new(token.clone())), songbird.clone())?;
+    // Initialize services with Poise message handler for better Discord integration
+    let services = initialize_services_with_poise(Arc::new(Http::new(token.clone())), songbird.clone())?;
 
     // Create Data container for commands
     let data = Data::new(services);

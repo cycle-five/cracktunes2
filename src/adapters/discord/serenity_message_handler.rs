@@ -33,6 +33,12 @@ impl SerenityMessageHandler {
     }
 }
 
+impl From<Arc<Http>> for SerenityMessageHandler {
+    fn from(http: Arc<Http>) -> Self {
+        Self::new(http)
+    }
+}
+
 #[async_trait]
 impl MessageHandler for SerenityMessageHandler {
     async fn send_message(
