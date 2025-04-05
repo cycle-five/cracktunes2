@@ -277,13 +277,227 @@ pub async fn stop(ctx: Context<'_>) -> Result<(), crack_types::Error> {
     Ok(())
 }
 
-/// Displays the current queue
+/// Helper function to format track information for the queue display
+async fn format_track_info(track: &songbird::tracks::TrackHandle, index: Option<usize>) -> String {
+    let prefix = if let Some(i) = index {
+        format!("{i}. ")
+    } else {
+        "▶️ **Currently Playing:** ".to_string()
+    };
+
+    // Much simpler approach - just get basic info about track status
+    if let Ok(track_info) = track.get_info().await {
+        // Format play time
+        let play_time = track_info.play_time;
+        let position_str = {
+            let minutes = play_time.as_secs() / 60;
+            let seconds = play_time.as_secs() % 60;
+            format!("{minutes:02}:{seconds:02}")
+        };
+
+        let status = match track_info.playing {
+            songbird::tracks::PlayMode::Play => "▶️",
+            songbird::tracks::PlayMode::Pause => "⏸️",
+            _ => "⏹️", // Default case for Stop and any future variants
+        };
+
+        // Simple format with just track position and status
+        format!("{prefix}{status} Track [{position_str}]")
+    } else {
+        format!("{prefix}Unknown track")
+    }
+}
+
+/// Displays the current queue with pagination support
 #[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn show_queue(ctx: Context<'_>) -> Result<(), crack_types::Error> {
+    use std::fmt::Write;
+
     // Immediately acknowledge the interaction to prevent timeout
     ctx.defer().await?;
 
-    ctx.say("Not yet implemented").await?;
+    let guild_id = ctx.guild_id().ok_or(CrackedError::from("No guild ID?"))?;
+    let songbird = ctx.data().songbird.clone();
+
+    if let Some(handler_lock) = songbird.get(guild_id) {
+        let handler = handler_lock.lock().await;
+        let queue = handler.queue();
+        let current_queue = queue.current_queue();
+
+        if current_queue.is_empty() {
+            ctx.say(crate::EMPTY_QUEUE).await?;
+            return Ok(());
+        }
+
+        // Create paginated response
+        let tracks_per_page = 10;
+        #[allow(clippy::manual_div_ceil)]
+        let total_pages = (current_queue.len() + tracks_per_page - 1) / tracks_per_page;
+
+        // Generate pages
+        let mut pages = Vec::with_capacity(total_pages);
+        for page_idx in 0..total_pages {
+            let start_idx = page_idx * tracks_per_page;
+            let end_idx = (start_idx + tracks_per_page).min(current_queue.len());
+
+            // Build the page content
+            let mut content = String::new();
+
+            // Always include currently playing track on every page
+            if let Some(current) = current_queue.first() {
+                content.push_str(&format_track_info(current, None).await);
+                content.push_str("\n\n");
+            }
+
+            // Add the tracks for this page
+            if start_idx > 0 || end_idx > 1 {
+                content.push_str("**Up Next:**\n");
+                let range_start = if start_idx == 0 { 1 } else { start_idx };
+
+                for (i, track) in current_queue[range_start..end_idx].iter().enumerate() {
+                    content.push_str(&format_track_info(track, Some(range_start + i)).await);
+                    content.push('\n');
+                }
+            }
+
+            // Add page info
+            let _ = write!(
+                content,
+                "\n**Page {}/{}** · {} tracks total",
+                page_idx + 1,
+                total_pages,
+                current_queue.len()
+            );
+
+            pages.push(content);
+        }
+
+        // Create a vector of string slices for paginate
+        let page_refs: Vec<&str> = pages.iter().map(String::as_str).collect();
+
+        // Use Poise's pagination
+        // We'll probably need to customize this eventually.
+        poise::builtins::paginate(ctx, &page_refs).await?;
+    } else {
+        ctx.say("Not in a voice channel").await?;
+    }
+
+    Ok(())
+}
+
+/// Pauses the current track
+#[poise::command(slash_command, prefix_command, guild_only)]
+pub async fn pause(ctx: Context<'_>) -> Result<(), crack_types::Error> {
+    // Immediately acknowledge the interaction to prevent timeout
+    ctx.defer().await?;
+
+    let guild_id = ctx.guild_id().ok_or(CrackedError::from("No guild ID?"))?;
+    let songbird = ctx.data().songbird.clone();
+
+    if let Some(handler_lock) = songbird.get(guild_id) {
+        let handler = handler_lock.lock().await;
+
+        // Check if there's a track playing
+        if handler.queue().is_empty() {
+            ctx.say("Nothing is playing to pause.").await?;
+            return Ok(());
+        }
+
+        // Pause the queue
+        let _ = handler.queue().pause();
+
+        // Update activity timestamp
+        if let Some(idle_info) = ctx.data().idle_timeouts.get(&guild_id) {
+            idle_info.bump_activity();
+        }
+
+        ctx.say("Playback paused.").await?;
+    } else {
+        ctx.say("Not in a voice channel.").await?;
+    }
+
+    Ok(())
+}
+
+/// Resumes playback if paused
+#[poise::command(slash_command, prefix_command, guild_only)]
+pub async fn resume(ctx: Context<'_>) -> Result<(), crack_types::Error> {
+    // Immediately acknowledge the interaction to prevent timeout
+    ctx.defer().await?;
+
+    let guild_id = ctx.guild_id().ok_or(CrackedError::from("No guild ID?"))?;
+    let songbird = ctx.data().songbird.clone();
+
+    if let Some(handler_lock) = songbird.get(guild_id) {
+        let handler = handler_lock.lock().await;
+
+        // Check if there's a track in the queue
+        if handler.queue().is_empty() {
+            ctx.say("Nothing to resume.").await?;
+            return Ok(());
+        }
+
+        // Resume the queue
+        let _ = handler.queue().resume();
+
+        // Update activity timestamp
+        if let Some(idle_info) = ctx.data().idle_timeouts.get(&guild_id) {
+            idle_info.bump_activity();
+        }
+
+        ctx.say("Playback resumed.").await?;
+    } else {
+        ctx.say("Not in a voice channel.").await?;
+    }
+
+    Ok(())
+}
+
+/// Adjusts the volume (0-100)
+#[poise::command(slash_command, prefix_command, guild_only)]
+pub async fn volume(
+    ctx: Context<'_>,
+    #[description = "Volume level (0-100)"]
+    #[min = 0.0]
+    #[max = 100.0]
+    volume: f32,
+) -> Result<(), crack_types::Error> {
+    // Immediately acknowledge the interaction to prevent timeout
+    ctx.defer().await?;
+
+    // For prefix commands, we still need to validate the range
+    // (the min/max constraints only apply to slash commands)
+    if !(0.0..=100.0).contains(&volume) {
+        ctx.say("Volume must be between 0 and 100.").await?;
+        return Ok(());
+    }
+
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let songbird = ctx.data().songbird.clone();
+
+    if let Some(handler_lock) = songbird.get(guild_id) {
+        let handler = handler_lock.lock().await;
+
+        // Convert volume to a decimal (0.0 - 1.0)
+        let decimal_volume = volume / 100.0;
+
+        // Set the volume for all tracks in the queue
+        handler.queue().modify_queue(|queue| {
+            // Apply volume to all tracks
+            for track in queue {
+                let _ = track.set_volume(decimal_volume);
+            }
+        });
+
+        // Update activity timestamp
+        if let Some(idle_info) = ctx.data().idle_timeouts.get(&guild_id) {
+            idle_info.bump_activity();
+        }
+
+        ctx.say(format!("Volume set to {volume:02}%")).await?;
+    } else {
+        ctx.say("Not in a voice channel.").await?;
+    }
 
     Ok(())
 }

@@ -1,5 +1,5 @@
 pub mod music;
-pub use music::{join, leave, play, show_queue, shuffle, skip, stop};
+pub use music::{join, leave, pause, play, resume, show_queue, shuffle, skip, stop, volume};
 
 use crate::Data;
 use poise::Command;
@@ -11,11 +11,12 @@ pub fn all_music_commands() -> Vec<Command<Data, crack_types::Error>> {
         join(),
         leave(),
         play(),
-        //pause(),
-        //resume(),
+        pause(),
+        resume(),
         shuffle(),
         skip(),
         stop(),
         show_queue(),
+        volume(),
     ]
 }

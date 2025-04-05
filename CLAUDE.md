@@ -12,7 +12,9 @@
 - **Fix lints**: `cargo clippy --fix`
 
 ## Code Style Guidelines
-- **Error Handling**: Use `thiserror` for error types, return `Result<T, crack_types::Error>`
+- **Error Handling**: Use `CrackedError::..` where possible
+    `thiserror` for new error types
+    return `Result<T, crack_types::Error>`
 - **Logging**: Use `tracing` (`debug`, `info`, `error`) with appropriate targets.
     Use logging.rs module with appropriate prefixes for significant spots in the code.
 - **Formatting**: Follow standard Rust formatting (via `rustfmt`)
