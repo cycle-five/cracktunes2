@@ -162,6 +162,23 @@ impl Debug for TrackMetadata {
     }
 }
 
+impl TrackMetadata {
+    pub fn new(requesting_user: String, requesting_user_id: String) -> Self {
+        Self {
+            requesting_user,
+            requesting_user_id,
+            metadata: None,
+        }
+    }
+
+    pub fn get_duration_as_secs(&self) -> u64 {
+        self.metadata
+            .as_ref()
+            .and_then(|metadata| metadata.duration.map(|d| d.as_secs()))
+            .unwrap_or(0)
+    }
+}
+
 /// Client for resolving tracks and managing queues. Also holds other clients like
 /// reqwest, `rusty_ytdl`, and songbird.
 #[derive(Clone)]
@@ -176,7 +193,7 @@ pub struct CrackData {
 
 impl fmt::Debug for CrackData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("CrackTrackClient")
+        f.debug_struct("CrackData")
             .field("req_client", &"reqwest::Client")
             .field("yt_client", &"rusty_ytdl::search::YouTube")
             .field("idle_timeouts", &self.idle_timeouts)
@@ -218,6 +235,8 @@ impl Debug for Data {
     }
 }
 
+/// Struct to hold search suggestions
+/// for a given query. This is used to display search results
 #[derive(Debug, Clone)]
 pub struct SearchSuggestion {
     pub title: String,
@@ -235,7 +254,6 @@ impl fmt::Display for SearchSuggestion {
 /// # Errors
 /// Returns an error if the query fails.
 pub async fn suggestion2(query: &str) -> Vec<SearchSuggestion> {
-    // Access the static directly instead of cloning it
     if query.len() < 3 {
         return Vec::new();
     }
@@ -250,14 +268,11 @@ pub async fn suggestion2(query: &str) -> Vec<SearchSuggestion> {
             let suggestions: Vec<SearchSuggestion> = results
                 .into_iter()
                 .filter_map(|x| match x {
-                    search::SearchResult::Video(video) => {
-                        //Some(format!("{} * {}", video.title, video.duration))
-                        Some(SearchSuggestion {
-                            title: video.title,
-                            url: video.url,
-                            duration: video.duration.to_string(),
-                        })
-                    }
+                    search::SearchResult::Video(video) => Some(SearchSuggestion {
+                        title: video.title,
+                        url: video.url,
+                        duration: video.duration.to_string(),
+                    }),
                     _ => None,
                 })
                 .collect();

@@ -235,7 +235,7 @@ pub async fn skip(ctx: Context<'_>) -> Result<(), crack_types::Error> {
     // Immediately acknowledge the interaction to prevent timeout
     ctx.defer().await?;
 
-    let guild_id = ctx.guild_id().unwrap();
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let songbird = ctx.data().songbird.clone();
 
     if let Some(handler_lock) = songbird.get(guild_id) {
@@ -260,7 +260,7 @@ pub async fn stop(ctx: Context<'_>) -> Result<(), crack_types::Error> {
     // Immediately acknowledge the interaction to prevent timeout
     ctx.defer().await?;
 
-    let guild_id = ctx.guild_id().unwrap();
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let songbird = ctx.data().songbird.clone();
 
     if let Some(handler_lock) = songbird.get(guild_id) {
@@ -287,12 +287,16 @@ async fn format_track_info(track: &songbird::tracks::TrackHandle, index: Option<
 
     // Much simpler approach - just get basic info about track status
     if let Ok(track_info) = track.get_info().await {
+        let data = track.data::<TrackMetadata>();
         // Format play time
         let play_time = track_info.play_time;
         let position_str = {
             let minutes = play_time.as_secs() / 60;
             let seconds = play_time.as_secs() % 60;
-            format!("{minutes:02}:{seconds:02}")
+            let duration = data.get_duration_as_secs();
+            let total_minutes = duration / 60;
+            let total_seconds = duration % 60;
+            format!("{minutes:02}:{seconds:02} out of {total_minutes:02}:{total_seconds:02}")
         };
 
         let status = match track_info.playing {
@@ -425,7 +429,7 @@ pub async fn resume(ctx: Context<'_>) -> Result<(), crack_types::Error> {
     // Immediately acknowledge the interaction to prevent timeout
     ctx.defer().await?;
 
-    let guild_id = ctx.guild_id().ok_or(CrackedError::from("No guild ID?"))?;
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let songbird = ctx.data().songbird.clone();
 
     if let Some(handler_lock) = songbird.get(guild_id) {
