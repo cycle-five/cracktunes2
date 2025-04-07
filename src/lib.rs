@@ -7,6 +7,8 @@ pub mod connection;
 pub use connection::*;
 pub mod commands;
 pub use commands::*;
+pub mod guild_cache;
+pub use guild_cache::*;
 
 #[cfg(test)]
 pub mod test;
@@ -24,8 +26,8 @@ use crack_types::{Error, QueryType};
 //------------------------------------
 use rusty_ytdl::RequestOptions;
 use rusty_ytdl::{search, search::YouTube};
+use serenity::all::GuildId;
 use songbird::input::AuxMetadata;
-use std::sync::atomic::AtomicUsize;
 use std::sync::LazyLock;
 use tracing::{error, info};
 //------------------------------------
@@ -99,48 +101,6 @@ pub fn get_reqwest_client() -> reqwest::Client {
     REQ_CLIENT.clone()
 }
 
-/// Struct to hold idle timeout information for a guild
-#[derive(Clone)]
-pub struct IdleTimeoutInfo {
-    pub timeout_minutes: Arc<AtomicUsize>, // 0 means never leave
-    pub last_activity: Arc<AtomicUsize>,   // Timestamp in minutes since joining
-}
-
-impl Default for IdleTimeoutInfo {
-    fn default() -> Self {
-        Self {
-            timeout_minutes: Arc::new(AtomicUsize::new(5)), // Default to 5 minutes
-            last_activity: Arc::new(AtomicUsize::new(0)),
-        }
-    }
-}
-
-impl IdleTimeoutInfo {
-    /// Increment the `last_activity` timestamp by 1 (for marking active actions)
-    pub fn bump_activity(&self) {
-        let current_time = self
-            .last_activity
-            .load(std::sync::atomic::Ordering::Relaxed);
-        self.last_activity
-            .store(current_time + 1, std::sync::atomic::Ordering::Relaxed);
-    }
-
-    /// Set the `last_activity` timestamp to a specific value (for syncing with time tracking)
-    pub fn set_activity_to(&self, time: usize) {
-        self.last_activity
-            .store(time, std::sync::atomic::Ordering::Relaxed);
-    }
-}
-
-impl fmt::Debug for IdleTimeoutInfo {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("IdleTimeoutInfo")
-            .field("timeout_minutes", &self.timeout_minutes)
-            .field("last_activity", &self.last_activity)
-            .finish()
-    }
-}
-
 /// Struct to hold the metadata we additionally want to track for each track.
 #[derive(Clone)]
 pub struct TrackMetadata {
@@ -174,14 +134,14 @@ impl TrackMetadata {
     }
 }
 
-/// Client for resolving tracks and managing queues. Also holds other clients like
+/// Our user data structure, all commands have access to it,
+/// Used for resolving tracks and managing queues. Also holds other clients like
 /// reqwest, `rusty_ytdl`, and songbird.
 #[derive(Clone)]
 pub struct CrackData {
     pub req_client: reqwest::Client,
     pub yt_client: rusty_ytdl::search::YouTube,
-    // Map of guild IDs to idle timeout information
-    pub idle_timeouts: dashmap::DashMap<serenity::all::GuildId, IdleTimeoutInfo>,
+    pub guild_cache_map: dashmap::DashMap<GuildId, GuildCache>,
     // Songbird instance for audio
     pub songbird: Arc<songbird::Songbird>,
 }
@@ -191,7 +151,7 @@ impl fmt::Debug for CrackData {
         f.debug_struct("CrackData")
             .field("req_client", &"reqwest::Client")
             .field("yt_client", &"rusty_ytdl::search::YouTube")
-            .field("idle_timeouts", &self.idle_timeouts)
+            .field("guild_cache_map", &"DashMap<GuildId, GuildCache>")
             .field("songbird", &"Arc<songbird::Songbird>")
             .finish()
     }
@@ -227,6 +187,17 @@ impl std::ops::DerefMut for Data {
 impl Debug for Data {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Data").field("0", &self.0).finish()
+    }
+}
+
+impl Data {
+    /// Bump the activity timestamp for a guild.
+    pub fn bump_activity(&self, guild_id: GuildId) {
+        if let Some(cache) = self.guild_cache_map.get(&guild_id) {
+            cache.idle_timeout.bump_activity();
+        } else {
+            error!("No guild cache found for guild_id: {guild_id:?}");
+        }
     }
 }
 

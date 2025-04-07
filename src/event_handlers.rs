@@ -67,11 +67,8 @@ impl VoiceEventHandler for EnhancedTrackErrorNotifier {
             );
 
             // Update activity timestamp by bumping it
-            if let Some(idle_info) = self.data.idle_timeouts.get(&self.guild_id) {
-                idle_info.bump_activity();
-            }
+            self.data.bump_activity(self.guild_id);
         }
-
         None
     }
 }

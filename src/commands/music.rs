@@ -1,7 +1,7 @@
 use crate::{
     check_voice_connections,
     event_handlers::{ChannelDurationNotifier, EnhancedTrackErrorNotifier},
-    suggestion2, Connection, Context, EnhancedTrackEndNotifier, IdleTimeoutInfo, TrackMetadata,
+    suggestion2, Connection, Context, EnhancedTrackEndNotifier, TrackMetadata,
 };
 use ::serenity::all::{AutocompleteChoice, AutocompleteValue, CreateAutocompleteResponse};
 use crack_types::CrackedError;
@@ -16,10 +16,7 @@ use songbird::{
 use std::fmt::Write;
 use std::{
     borrow::Cow,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
+    sync::{atomic::AtomicBool, Arc},
     time::Duration,
 };
 use tracing::info;
@@ -87,19 +84,7 @@ pub async fn join(ctx: Context<'_>) -> Result<(), crack_types::Error> {
         );
 
         // Initialize the idle timeout info for this guild
-        let _ = ctx
-            .data()
-            .idle_timeouts
-            .entry(guild_id)
-            .and_modify(|info| {
-                // Initialize the last activity timestamp to the current time (0 minutes since joining)
-                info.last_activity.store(0, Ordering::Relaxed);
-            })
-            .or_insert_with(|| {
-                let info = IdleTimeoutInfo::default();
-                info.last_activity.store(0, Ordering::Relaxed);
-                info
-            });
+        let _ = ctx.data().bump_activity(guild_id);
 
         // Create the channel duration notifier
         let notifier = ChannelDurationNotifier {
@@ -209,10 +194,11 @@ pub async fn play(
 
         info!("State: {}", state);
 
-        // Update activity timestamp by bumping it
-        if let Some(idle_info) = ctx.data().idle_timeouts.get(&guild_id) {
-            idle_info.bump_activity();
-        }
+        // // Update activity timestamp by bumping it
+        // if let Some(idle_info) = ctx.data().idle_timeouts.get(&guild_id) {
+        //     idle_info.bump_activity();
+        // }
+        ctx.data().bump_activity(guild_id);
 
         let queue_len = handler.queue().len();
         if queue_len > 0 {
@@ -429,9 +415,7 @@ pub async fn pause(ctx: Context<'_>) -> Result<(), crack_types::Error> {
         let _ = handler.queue().pause();
 
         // Update activity timestamp
-        if let Some(idle_info) = ctx.data().idle_timeouts.get(&guild_id) {
-            idle_info.bump_activity();
-        }
+        ctx.data().bump_activity(guild_id);
 
         ctx.say("Playback paused.").await?;
     } else {
@@ -462,10 +446,8 @@ pub async fn resume(ctx: Context<'_>) -> Result<(), crack_types::Error> {
         // Resume the queue
         let _ = handler.queue().resume();
 
-        // Update activity timestamp
-        if let Some(idle_info) = ctx.data().idle_timeouts.get(&guild_id) {
-            idle_info.bump_activity();
-        }
+        // // Update activity timestamp
+        ctx.data().bump_activity(guild_id);
 
         ctx.say("Playback resumed.").await?;
     } else {
@@ -511,10 +493,7 @@ pub async fn volume(
             }
         });
 
-        // Update activity timestamp
-        if let Some(idle_info) = ctx.data().idle_timeouts.get(&guild_id) {
-            idle_info.bump_activity();
-        }
+        ctx.data().bump_activity(guild_id);
 
         ctx.say(format!("Volume set to {volume:02}%")).await?;
     } else {

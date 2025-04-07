@@ -136,19 +136,13 @@ async fn set_idle_timeout(
     // Get or create the idle timeout info for this guild
     let _ = ctx
         .data()
-        .idle_timeouts
+        .guild_cache_map
         .entry(guild_id)
-        .and_modify(|info| {
-            // Update the timeout
-            info.timeout_minutes
-                .store(minutes, std::sync::atomic::Ordering::Relaxed);
+        .and_modify(|cache| {
+            // Update the idle timeout
+            cache.idle_timeout.set_activity_to(minutes);
         })
-        .or_insert_with(|| {
-            let info = cracktunes::IdleTimeoutInfo::default();
-            info.timeout_minutes
-                .store(minutes, std::sync::atomic::Ordering::Relaxed);
-            info
-        });
+        .or_insert_with(|| cracktunes::GuildCache::default().with_idle_timeout(minutes));
 
     if minutes == 0 {
         ctx.say("Idle timeout disabled. Bot will not automatically leave the channel.")
@@ -221,7 +215,7 @@ async fn main() {
         req_client,
         yt_client,
         songbird: songbird_clone,
-        idle_timeouts: DashMap::default(),
+        guild_cache_map: DashMap::default(),
     });
 
     // Set up the poise framework with command hooks for logging
