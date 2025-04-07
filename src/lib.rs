@@ -17,13 +17,11 @@ pub type Context<'a> = poise::Context<'a, Data, crack_types::Error>;
 //------------------------------------
 // crack_types imports
 //------------------------------------
-// use crack_osint::ipqs::IpqsClient;
-use crack_types::http::parse_url;
 use crack_types::{Error, QueryType};
+
 //------------------------------------
 // External library imports
 //------------------------------------
-use clap::{Parser, Subcommand};
 use rusty_ytdl::RequestOptions;
 use rusty_ytdl::{search, search::YouTube};
 use songbird::input::AuxMetadata;
@@ -41,7 +39,9 @@ use std::sync::Arc;
 //------------------------------------
 pub const CREATING: &str = "Creating";
 pub const DEFAULT_PLAYLIST_LIMIT: u64 = 50;
-pub const EMPTY_QUEUE: &str = "Queue is empty or display not built.";
+pub const EMPTY_QUEUE: &str = "Queue is empty.";
+pub const NOTHING_PLAYING: &str = "Nothing is playing.";
+pub const NOTHING_PLAYING_PAUSE: &str = "Nothing is playing to pause.";
 pub const NEW_FAILED: &str = "New failed";
 pub const REQ_CLIENT_STR: &str = "Reqwest client";
 pub const UNKNOWN_TITLE: &str = "Unknown title";
@@ -163,14 +163,9 @@ impl Debug for TrackMetadata {
 }
 
 impl TrackMetadata {
-    pub fn new(requesting_user: String, requesting_user_id: String) -> Self {
-        Self {
-            requesting_user,
-            requesting_user_id,
-            metadata: None,
-        }
-    }
-
+    #[must_use]
+    /// Get the track duration in seconds.
+    /// Returns 0 if the duration is not available.
     pub fn get_duration_as_secs(&self) -> u64 {
         self.metadata
             .as_ref()
@@ -211,7 +206,7 @@ pub struct Data(pub CrackData);
 
 impl Drop for Data {
     fn drop(&mut self) {
-        // Clean up resources if needed
+        // don't need to do anything here right now
     }
 }
 
@@ -231,7 +226,7 @@ impl std::ops::DerefMut for Data {
 
 impl Debug for Data {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Data").field("client", &self.0).finish()
+        f.debug_struct("Data").field("0", &self.0).finish()
     }
 }
 
@@ -246,7 +241,9 @@ pub struct SearchSuggestion {
 
 impl fmt::Display for SearchSuggestion {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[{}]({}) - ({})", self.title, self.url, self.duration)
+        // Limit the title to 20 characters for display
+        let title = &self.title[..20];
+        write!(f, "[{}]({}) - {}", title, self.url, self.duration)
     }
 }
 
@@ -316,40 +313,6 @@ pub fn check_msg(result: serenity::Result<serenity::all::Message>) {
     if let Err(why) = result {
         error!("Error sending message: {why:?}");
     }
-}
-
-/// Args struct for the CLI.
-#[derive(Parser, Debug)]
-#[command(
-    version = "1.0",
-    author = "Cycle Five <cycle.five@proton.me>",
-    about = "A simple CLI harness for testing new modules for Crack Tunes."
-)]
-struct Cli {
-    /// The command to run
-    #[command(subcommand)]
-    command: Commands,
-}
-
-/// The command to run.
-#[derive(Subcommand, Debug)]
-enum Commands {
-    Suggest {
-        /// The query to get suggestions for.
-        query: String,
-    },
-    Ipqs {
-        ip: String,
-    },
-    Resolve {
-        /// URL of the video / playlist to resolve.
-        #[arg(value_parser = parse_url)]
-        url: url::Url,
-    },
-    Query {
-        /// The query to resolve.
-        query: String,
-    },
 }
 
 /// Get the query type from a youtube URL. Video or playlist.

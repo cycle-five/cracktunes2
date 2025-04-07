@@ -13,6 +13,7 @@ use songbird::{
     tracks::Track,
     Event, TrackEvent,
 };
+use std::fmt::Write;
 use std::{
     borrow::Cow,
     sync::{
@@ -197,8 +198,6 @@ pub async fn play(
         });
         let track = Track::new_with_data(src.into(), track_data);
 
-        // This handler object will allow you to, as needed,
-        // control the audio track via events and further commands.
         //let _ = handler.play_input(src.into());
         let x = handler.enqueue(track).await;
         let state = match x.get_info().await {
@@ -282,12 +281,24 @@ async fn format_track_info(track: &songbird::tracks::TrackHandle, index: Option<
     let prefix = if let Some(i) = index {
         format!("{i}. ")
     } else {
-        "▶️ **Currently Playing:** ".to_string()
+        "**Currently Playing:**\n".to_string()
     };
 
     // Much simpler approach - just get basic info about track status
     if let Ok(track_info) = track.get_info().await {
         let data = track.data::<TrackMetadata>();
+        let title = data
+            .metadata
+            .as_ref()
+            .and_then(|m| m.title.as_ref())
+            .unwrap_or(&"Unknown".to_string())
+            .clone();
+        let url = data
+            .metadata
+            .as_ref()
+            .and_then(|m| m.source_url.as_ref())
+            .unwrap_or(&"Unknown".to_string())
+            .clone();
         // Format play time
         let play_time = track_info.play_time;
         let position_str = {
@@ -296,7 +307,11 @@ async fn format_track_info(track: &songbird::tracks::TrackHandle, index: Option<
             let duration = data.get_duration_as_secs();
             let total_minutes = duration / 60;
             let total_seconds = duration % 60;
-            format!("{minutes:02}:{seconds:02} out of {total_minutes:02}:{total_seconds:02}")
+            if minutes == 0 && seconds == 0 {
+                format!("{total_minutes:02}:{total_seconds:02}")
+            } else {
+                format!("{minutes:02}:{seconds:02} / {total_minutes:02}:{total_seconds:02}")
+            }
         };
 
         let status = match track_info.playing {
@@ -306,7 +321,7 @@ async fn format_track_info(track: &songbird::tracks::TrackHandle, index: Option<
         };
 
         // Simple format with just track position and status
-        format!("{prefix}{status} Track [{position_str}]")
+        format!("{prefix}{status} [{title}]({url}) [{position_str}]")
     } else {
         format!("{prefix}Unknown track")
     }
@@ -315,69 +330,21 @@ async fn format_track_info(track: &songbird::tracks::TrackHandle, index: Option<
 /// Displays the current queue with pagination support
 #[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn show_queue(ctx: Context<'_>) -> Result<(), crack_types::Error> {
-    use std::fmt::Write;
-
     // Immediately acknowledge the interaction to prevent timeout
     ctx.defer().await?;
 
-    let guild_id = ctx.guild_id().ok_or(CrackedError::from("No guild ID?"))?;
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let songbird = ctx.data().songbird.clone();
 
     if let Some(handler_lock) = songbird.get(guild_id) {
-        let handler = handler_lock.lock().await;
-        let queue = handler.queue();
-        let current_queue = queue.current_queue();
+        let current_queue = handler_lock.lock().await.queue().current_queue();
 
         if current_queue.is_empty() {
             ctx.say(crate::EMPTY_QUEUE).await?;
             return Ok(());
         }
-
-        // Create paginated response
-        let tracks_per_page = 10;
-        #[allow(clippy::manual_div_ceil)]
-        let total_pages = (current_queue.len() + tracks_per_page - 1) / tracks_per_page;
-
-        // Generate pages
-        let mut pages = Vec::with_capacity(total_pages);
-        for page_idx in 0..total_pages {
-            let start_idx = page_idx * tracks_per_page;
-            let end_idx = (start_idx + tracks_per_page).min(current_queue.len());
-
-            // Build the page content
-            let mut content = String::new();
-
-            // Always include currently playing track on every page
-            if let Some(current) = current_queue.first() {
-                content.push_str(&format_track_info(current, None).await);
-                content.push_str("\n\n");
-            }
-
-            // Add the tracks for this page
-            if start_idx > 0 || end_idx > 1 {
-                content.push_str("**Up Next:**\n");
-                let range_start = if start_idx == 0 { 1 } else { start_idx };
-
-                for (i, track) in current_queue[range_start..end_idx].iter().enumerate() {
-                    content.push_str(&format_track_info(track, Some(range_start + i)).await);
-                    content.push('\n');
-                }
-            }
-
-            // Add page info
-            let _ = write!(
-                content,
-                "\n**Page {}/{}** · {} tracks total",
-                page_idx + 1,
-                total_pages,
-                current_queue.len()
-            );
-
-            pages.push(content);
-        }
-
-        // Create a vector of string slices for paginate
-        let page_refs: Vec<&str> = pages.iter().map(String::as_str).collect();
+        let pages = build_queue_pages(&current_queue).await?;
+        let page_refs: Vec<&str> = pages.iter().map(|s| s.as_str()).collect();
 
         // Use Poise's pagination
         // We'll probably need to customize this eventually.
@@ -389,13 +356,64 @@ pub async fn show_queue(ctx: Context<'_>) -> Result<(), crack_types::Error> {
     Ok(())
 }
 
+/// Helper function to build the queue pages
+pub async fn build_queue_pages(
+    current_queue: &[songbird::tracks::TrackHandle],
+) -> Result<Vec<String>, crack_types::Error> {
+    // Create paginated response
+    let tracks_per_page = 10;
+    #[allow(clippy::manual_div_ceil)]
+    let total_pages = (current_queue.len() + tracks_per_page - 1) / tracks_per_page;
+
+    let mut pages = Vec::with_capacity(total_pages);
+
+    // Generate pages
+    for page_idx in 0..total_pages {
+        let start_idx = page_idx * tracks_per_page;
+        let end_idx = (start_idx + tracks_per_page).min(current_queue.len());
+
+        // Build the page content
+        let mut content = String::new();
+
+        // Always include currently playing track on every page
+        if let Some(current) = current_queue.first() {
+            content.push_str(&format_track_info(current, None).await);
+            content.push_str("\n\n");
+        }
+
+        // Add the tracks for this page
+        if start_idx > 0 || end_idx > 1 {
+            content.push_str("**Up Next:**\n");
+            let range_start = if start_idx == 0 { 1 } else { start_idx };
+
+            for (i, track) in current_queue[range_start..end_idx].iter().enumerate() {
+                content.push_str(&format_track_info(track, Some(range_start + i)).await);
+                content.push('\n');
+            }
+        }
+
+        // Add page info
+        let _ = write!(
+            content,
+            "\n**Page {}/{}** · {} tracks total",
+            page_idx + 1,
+            total_pages,
+            current_queue.len()
+        );
+
+        pages.push(content);
+    }
+
+    Ok(pages)
+}
+
 /// Pauses the current track
 #[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn pause(ctx: Context<'_>) -> Result<(), crack_types::Error> {
     // Immediately acknowledge the interaction to prevent timeout
     ctx.defer().await?;
 
-    let guild_id = ctx.guild_id().ok_or(CrackedError::from("No guild ID?"))?;
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let songbird = ctx.data().songbird.clone();
 
     if let Some(handler_lock) = songbird.get(guild_id) {
@@ -403,7 +421,7 @@ pub async fn pause(ctx: Context<'_>) -> Result<(), crack_types::Error> {
 
         // Check if there's a track playing
         if handler.queue().is_empty() {
-            ctx.say("Nothing is playing to pause.").await?;
+            ctx.say(crate::NOTHING_PLAYING_PAUSE).await?;
             return Ok(());
         }
 
