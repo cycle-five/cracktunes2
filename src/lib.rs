@@ -10,7 +10,8 @@ pub use commands::*;
 pub mod guild_cache;
 pub use guild_cache::*;
 
-#[cfg(test)]
+// Make test module available for integration testing
+#[cfg(any(test, feature = "test-bot"))]
 pub mod test;
 
 // Define the context type for poise

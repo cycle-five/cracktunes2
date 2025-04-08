@@ -18,6 +18,7 @@ repository = "https://github.com/cycle-five/cracktunes"
 [features]
 default = ["crack-tracing"]
 crack-tracing = ["tracing", "tracing-subscriber", "tracing-appender"]
+test-bot = []
 
 [dependencies]
 crack-types = { tag = "v0.1.1", git = "https://github.com/cycle-five/crack-types" }
@@ -94,3 +95,8 @@ features = ["all", "opt-simd"]
 
 [dev-dependencies]
 mockall = "0.13.1"
+
+[[bin]]
+name = "test-bot"
+path = "scripts/test-bot.rs"
+required-features = ["test-bot"]

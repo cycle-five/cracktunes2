@@ -23,6 +23,7 @@ A high-performance Discord music bot written in Rust that brings YouTube and Spo
 - **Docker Support** - Containerized deployment for easy hosting
 - **CI/CD Pipeline** - Automated testing and deployment with GitHub Actions
 - **Slash Commands** - Modern Discord command integration
+- **Integration Testing** - Companion test bot for automated testing
 
 ## Prerequisites
 
@@ -122,6 +123,56 @@ We provide a script to test the Docker setup:
 
 This script builds a Docker image and runs the tests inside the container, ensuring your environment is correctly configured.
 
+## Integration Testing
+
+CrackTunes includes a test bot framework that can be used to perform integration tests on the main bot. This companion bot can:
+
+- Send commands and verify responses
+- Join voice channels to listen to audio output
+- Verify volume changes and detect audio patterns
+- Run automated test scenarios
+
+### Setting Up the Test Bot
+
+1. Register a separate Discord bot to use as the test bot
+2. Set up environment variables:
+   ```bash
+   export TEST_BOT_TOKEN=your_test_bot_token
+   export TARGET_BOT_ID=your_cracktunes_bot_user_id
+   ```
+
+3. Enable the test-bot feature in your build:
+   ```bash
+   cargo build --features test-bot
+   ```
+
+### Test Bot Architecture
+
+The test bot has several main components:
+
+- **TestHandler**: Main bot handler for processing events and managing test expectations
+- **AudioAnalyzer**: Processes audio data from voice channels to detect patterns and volume changes
+- **TestExpectation**: Tracks the expected responses for commands
+
+The integration test environment allows for:
+- Sending commands to the music bot and verifying responses
+- Monitoring voice state changes
+- Analyzing audio output to detect volume changes or specific patterns
+- Running automated test scenarios with predefined expectations
+
+#### Implementing Custom Tests
+
+To create custom test scenarios, use the `TestHandler` to:
+
+1. Set up test expectations with `add_expectation()`
+2. Send commands to the music bot with `send_command()`
+3. Verify results with `get_test_results()`
+
+For audio testing, use the `AudioAnalyzer` to:
+1. Listen for audio data in voice channels
+2. Detect volume changes with `get_volume_changes()`
+3. Check for specific audio patterns with `get_detected_patterns()`
+
 ## CI/CD Pipeline
 
 This project uses GitHub Actions for continuous integration and deployment:
@@ -203,6 +254,7 @@ CrackTunes is built with a focus on performance and reliability:
 - **Track Resolution**: Support for multiple music sources with a unified resolution system
 - **Event Handling**: Robust event system for handling Discord events and playback state changes
 - **Dockerized Deployment**: Containerized for consistent deployment across environments
+- **Integration Testing**: Companion test bot framework to verify functionality
 
 ## Troubleshooting
 
