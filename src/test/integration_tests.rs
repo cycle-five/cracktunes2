@@ -198,38 +198,42 @@ impl TestHandler {
         if let Some(channel_id) = *self.music_channel_id.lock().await {
             channel_id.say(&self.http, command).await
         } else {
-            Err(serenity::Error::Other("Music channel not set"))
+            Err(CrackedError::from("Music channel not set").into())
         }
     }
-    
+
     // Send an application (slash) command to the target bot
-    pub async fn send_slash_command(&self, 
-        command_name: &str, 
-        options: Vec<(String, String)>
+    pub async fn send_slash_command(
+        &self,
+        command_name: &str,
+        options: Vec<(String, String)>,
     ) -> Result<(), serenity::Error> {
         let guild_id = match *self.guild_id.lock().await {
             Some(id) => id,
-            None => return Err(serenity::Error::Other("Guild ID not set")),
+            None => return Err(CrackedError::Other("Guild ID not set".into()).into()),
         };
-        
+
         let channel_id = match *self.music_channel_id.lock().await {
             Some(id) => id,
-            None => return Err(serenity::Error::Other("Music channel not set")),
+            None => return Err(CrackedError::Other("Music channel not set".into()).into()),
         };
-        
+
         let target_bot_id = match *self.target_bot_id.lock().await {
             Some(id) => id,
-            None => return Err(serenity::Error::Other("Target bot ID not set")),
+            None => return Err(CrackedError::Other("Target bot ID not set".into()).into()),
         };
-        
+
         // First, retrieve the application commands available from the target bot
-        let application_commands = self.http.get_guild_application_commands(guild_id.0, target_bot_id.0).await?;
-        
+        let application_commands = self.http.get_guild_commands(guild_id).await?;
+
         // Find the command by name
-        let command = application_commands.iter()
+        let command = application_commands
+            .iter()
             .find(|cmd| cmd.name == command_name)
-            .ok_or_else(|| serenity::Error::Other(format!("Command '{}' not found", command_name)))?;
-        
+            .ok_or_else(|| {
+                CrackedError::Other(format!("Command '{}' not found", command_name).into())
+            })?;
+
         // Build the command options
         let mut command_options = Vec::new();
         for (name, value) in options {
@@ -241,41 +245,46 @@ impl TestHandler {
             });
             command_options.push(option);
         }
-        
+
         // Create the interaction data
         let interaction_data = serde_json::json!({
             "type": 2, // 2 is APPLICATION_COMMAND
-            "application_id": target_bot_id.0,
-            "guild_id": guild_id.0,
-            "channel_id": channel_id.0,
+            "application_id": target_bot_id,
+            "guild_id": guild_id,
+            "channel_id": channel_id,
             "data": {
-                "id": command.id.0,
+                "id": command.id,
                 "name": command.name,
                 "type": 1, // 1 for CHAT_INPUT
                 "options": command_options
             }
         });
-        
+
         // Send the interaction
         // Note: This is a simplified approach. In reality, interactions require proper
         // cryptographic signing which Discord's API validates. This direct approach
         // might not work with Discord's production API.
         let interaction_endpoint = "/api/v10/interactions".to_string();
-        
+
+        let url = format!("https://discord.com{}", interaction_endpoint)
+            .parse::<url::Url>()
+            .unwrap();
         // This is a direct HTTP approach, but Discord will likely reject it
         // without proper interaction signing
-        self.http.request(
-            serenity::http::Route::from_path(serenity::http::Method::Post, &interaction_endpoint),
-            serde_json::to_value(interaction_data).unwrap()
-        ).await?;
-        
+        //.header("Authorization", format!("Bot {}", self.http.token()))
+        reqwest::Client::new()
+            .post(url)
+            .json(&interaction_data)
+            .send()
+            .await?;
+
         // Alternative approach: Use Discord's interaction system
         // This would typically require setting up an interaction server
         // with proper webhook endpoints that Discord can call
-        
+
         Ok(())
     }
-    
+
     // Combined method that sends either a text command or slash command based on the prefix
     pub async fn send_command(&self, command: &str) -> Result<Message, serenity::Error> {
         // Check if it's a slash command (starts with '/')
@@ -283,12 +292,12 @@ impl TestHandler {
             // Extract command name and options
             let parts: Vec<&str> = command[1..].split_whitespace().collect();
             if parts.is_empty() {
-                return Err(serenity::Error::Other("Empty command"));
+                return Err(CrackedError::Other(Cow::Owned("Empty comman".into())).into());
             }
-            
+
             let command_name = parts[0];
             let mut options = Vec::new();
-            
+
             // Very basic option parsing
             // This should be improved for real production use
             let mut i = 1;
@@ -300,16 +309,16 @@ impl TestHandler {
                     }
                 } else if i + 1 < parts.len() {
                     // Assume it's a key followed by a value
-                    options.push((parts[i].to_string(), parts[i+1].to_string()));
+                    options.push((parts[i].to_string(), parts[i + 1].to_string()));
                     // Skip the next part as we used it as a value
                     i += 1;
                 }
                 i += 1;
             }
-            
+
             // Send the slash command
             self.send_slash_command(command_name, options).await?;
-            
+
             // For consistency with text commands, return a placeholder message
             // since slash commands don't return messages directly
             Ok(Message::default())
@@ -360,9 +369,13 @@ impl TestHandler {
             Err("Could not join voice channel".to_string())
         }
     }
-    
+
     // Helper method to send a specific CrackTunes command using slash commands
-    pub async fn send_cracktunes_command(&self, command_type: &str, options: Vec<(String, String)>) -> Result<(), serenity::Error> {
+    pub async fn send_cracktunes_command(
+        &self,
+        command_type: &str,
+        options: Vec<(String, String)>,
+    ) -> Result<(), serenity::Error> {
         // Map common command types to their slash command names
         let command_name = match command_type.to_lowercase().as_str() {
             "play" => "play",
@@ -383,7 +396,7 @@ impl TestHandler {
             "ping" => "ping",
             _ => command_type, // Use as-is if not in our mapping
         };
-        
+
         // Send the slash command
         self.send_slash_command(command_name, options).await
     }
@@ -392,13 +405,17 @@ impl TestHandler {
     pub async fn run_voice_commands_test(&self) -> Result<(), String> {
         // First join the voice channel
         self.join_voice_channel().await?;
-        
+
         // Setup expectations for tests
-        self.add_expectation("volume_test", "/volume", "Volume set to 50%").await;
-        self.add_expectation("play_test", "/play", "Playing song").await;
-        self.add_expectation("text_volume_test", "!volume 50", "Volume set to 50%").await;
-        self.add_expectation("text_play_test", "!play", "Playing song").await;
-        
+        self.add_expectation("volume_test", "/volume", "Volume set to 50%")
+            .await;
+        self.add_expectation("play_test", "/play", "Playing song")
+            .await;
+        self.add_expectation("text_volume_test", "!volume 50", "Volume set to 50%")
+            .await;
+        self.add_expectation("text_play_test", "!play", "Playing song")
+            .await;
+
         // Test with text commands first
         info!("Running text command tests...");
         let text_commands = vec![
@@ -409,69 +426,68 @@ impl TestHandler {
             "!resume",
             "!stop",
         ];
-        
+
         for cmd in text_commands {
             // Send command
             match self.send_command(cmd).await {
                 Ok(_) => info!("Sent text command: {}", cmd),
                 Err(e) => error!("Error sending text command: {}", e),
             }
-            
+
             // Wait for a response
             tokio::time::sleep(Duration::from_secs(2)).await;
         }
-        
+
         // Now test with slash commands
         info!("Running slash command tests...");
-        
+
         // Test join
         match self.send_cracktunes_command("join", vec![]).await {
             Ok(_) => info!("Sent slash command: /join"),
             Err(e) => error!("Error sending slash command: {}", e),
         }
         tokio::time::sleep(Duration::from_secs(2)).await;
-        
+
         // Test play
-        let play_options = vec![
-            ("url".to_string(), "https://www.youtube.com/watch?v=dQw4w9WgXcQ".to_string())
-        ];
+        let play_options = vec![(
+            "url".to_string(),
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ".to_string(),
+        )];
         match self.send_cracktunes_command("play", play_options).await {
             Ok(_) => info!("Sent slash command: /play"),
             Err(e) => error!("Error sending slash command: {}", e),
         }
         tokio::time::sleep(Duration::from_secs(2)).await;
-        
+
         // Test volume
-        let volume_options = vec![
-            ("volume".to_string(), "50".to_string())
-        ];
+        let volume_options = vec![("volume".to_string(), "50".to_string())];
         match self.send_cracktunes_command("volume", volume_options).await {
             Ok(_) => info!("Sent slash command: /volume"),
             Err(e) => error!("Error sending slash command: {}", e),
         }
         tokio::time::sleep(Duration::from_secs(2)).await;
-        
+
         // Test pause
         match self.send_cracktunes_command("pause", vec![]).await {
             Ok(_) => info!("Sent slash command: /pause"),
             Err(e) => error!("Error sending slash command: {}", e),
         }
         tokio::time::sleep(Duration::from_secs(2)).await;
-        
+
         // Test resume
         match self.send_cracktunes_command("resume", vec![]).await {
             Ok(_) => info!("Sent slash command: /resume"),
             Err(e) => error!("Error sending slash command: {}", e),
         }
         tokio::time::sleep(Duration::from_secs(2)).await;
-        
+
         // Test stop
         match self.send_cracktunes_command("stop", vec![]).await {
             Ok(_) => info!("Sent slash command: /stop"),
             Err(e) => error!("Error sending slash command: {}", e),
         }
         tokio::time::sleep(Duration::from_secs(2)).await;
-        
+
         Ok(())
     }
 }

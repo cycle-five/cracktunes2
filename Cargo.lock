@@ -794,6 +794,7 @@ dependencies = [
  "reqwest",
  "rspotify",
  "rusty_ytdl",
+ "serde_json",
  "serenity",
  "songbird",
  "symphonia",
