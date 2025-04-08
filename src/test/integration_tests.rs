@@ -128,6 +128,7 @@ impl TestExpectation {
 pub struct TestHandler {
     http: Arc<Http>,
     songbird: Arc<songbird::Songbird>,
+    runtime: Arc<tokio::runtime::Runtime>,
     music_channel_id: Mutex<Option<ChannelId>>,
     voice_channel_id: Mutex<Option<ChannelId>>,
     target_bot_id: Mutex<Option<serenity::UserId>>,
@@ -141,6 +142,7 @@ impl TestHandler {
         Self {
             http,
             songbird,
+            runtime: Arc::new(tokio::runtime::Runtime::new().unwrap()),
             music_channel_id: Mutex::new(None),
             voice_channel_id: Mutex::new(None),
             target_bot_id: Mutex::new(None),
@@ -191,6 +193,35 @@ impl TestHandler {
         map.iter()
             .map(|entry| (entry.key().clone(), entry.value().clone()))
             .collect()
+    }
+    
+    // Sync state from another TestHandler instance
+    // This is useful for updating a clone with the current state from the original
+    pub async fn sync_from(&self, other: &TestHandler) -> Result<(), ()> {
+        // Clone the values from other's mutexes to update our own
+        if let Some(music_channel_id) = *other.music_channel_id.lock().await {
+            *self.music_channel_id.lock().await = Some(music_channel_id);
+        }
+        
+        if let Some(voice_channel_id) = *other.voice_channel_id.lock().await {
+            *self.voice_channel_id.lock().await = Some(voice_channel_id);
+        }
+        
+        if let Some(target_bot_id) = *other.target_bot_id.lock().await {
+            *self.target_bot_id.lock().await = Some(target_bot_id);
+        }
+        
+        if let Some(audio_analyzer) = other.audio_analyzer.lock().await.clone() {
+            *self.audio_analyzer.lock().await = Some(audio_analyzer);
+        }
+        
+        if let Some(guild_id) = *other.guild_id.lock().await {
+            *self.guild_id.lock().await = Some(guild_id);
+        }
+        
+        // No need to sync test_expectations as they're shared through DashMap
+        
+        Ok(())
     }
 
     // Send a text command to the music channel
@@ -355,10 +386,16 @@ impl TestHandler {
             // Get the current bot ID
             if let Some(bot_id) = *self.target_bot_id.lock().await {
                 // Listen for specific events from the target bot
+                // Create a clone of self to use in the handler
+                let test_handler_clone = Arc::new(self.clone());
+                let source_handler = Arc::new(self.clone());
+                
+                // Use the updated TrackEndNotifier with both the cloned and source handlers
                 handler.add_global_event(
                     Event::Track(TrackEvent::End),
                     TrackEndNotifier {
-                        _test_handler: Arc::new(self.clone()),
+                        test_handler: test_handler_clone,
+                        source_handler,
                         target_bot_id: bot_id,
                     },
                 );
@@ -490,68 +527,33 @@ impl TestHandler {
 
         Ok(())
     }
+
 }
 
 // A test structure to handle the bot's responses efficiently
 impl Clone for TestHandler {
     fn clone(&self) -> Self {
-        // Note: We're going to have to actually clone the mutex contents to avoid deadlocks
-        let lock_timeout = Duration::from_millis(100);
-
-        let music_channel_id = tokio::runtime::Handle::current().block_on(async {
-            match timeout(lock_timeout, self.music_channel_id.lock()).await {
-                Ok(guard) => *guard,
-                Err(_) => None,
-            }
-        });
-
-        let voice_channel_id = tokio::runtime::Handle::current().block_on(async {
-            match timeout(lock_timeout, self.voice_channel_id.lock()).await {
-                Ok(guard) => *guard,
-                Err(_) => None,
-            }
-        });
-
-        let target_bot_id = tokio::runtime::Handle::current().block_on(async {
-            match timeout(lock_timeout, self.target_bot_id.lock()).await {
-                Ok(guard) => *guard,
-                Err(_) => None,
-            }
-        });
-
-        let test_expectations = self.test_expectations.clone();
-
-        let audio_analyzer = tokio::runtime::Handle::current().block_on(async {
-            match timeout(lock_timeout, self.audio_analyzer.lock()).await {
-                Ok(guard) => guard.clone(),
-                Err(_) => None,
-            }
-        });
-
-        let guild_id = tokio::runtime::Handle::current().block_on(async {
-            match timeout(lock_timeout, self.guild_id.lock()).await {
-                Ok(guard) => *guard,
-                Err(_) => None,
-            }
-        });
-
+        // Create new empty mutexes instead of trying to clone the locked values
+        // This avoids deadlocks by not trying to acquire locks during clone
         Self {
             http: self.http.clone(),
             songbird: self.songbird.clone(),
-            music_channel_id: Mutex::new(music_channel_id),
-            voice_channel_id: Mutex::new(voice_channel_id),
-            target_bot_id: Mutex::new(target_bot_id),
-            test_expectations: test_expectations.clone(),
-            audio_analyzer: Mutex::new(audio_analyzer),
-            guild_id: Mutex::new(guild_id),
+            runtime: self.runtime.clone(),
+            music_channel_id: Mutex::new(None),  // Start with empty values
+            voice_channel_id: Mutex::new(None),
+            target_bot_id: Mutex::new(None),
+            test_expectations: self.test_expectations.clone(), // DashMap is already thread-safe
+            audio_analyzer: Mutex::new(None),
+            guild_id: Mutex::new(None),
         }
     }
 }
 
 // Track end event handler for monitoring the target bot's activity
 pub struct TrackEndNotifier {
-    _test_handler: Arc<TestHandler>,
-    target_bot_id: serenity::UserId,
+    pub test_handler: Arc<TestHandler>,
+    pub source_handler: Arc<TestHandler>,
+    pub target_bot_id: serenity::UserId,
 }
 
 #[async_trait]
@@ -561,6 +563,12 @@ impl VoiceEventHandler for TrackEndNotifier {
             "Detected track end event from target bot: {}",
             self.target_bot_id
         );
+        
+        // Sync state from the source handler to ensure this clone has up-to-date data
+        if let Err(_) = self.test_handler.sync_from(&self.source_handler).await {
+            error!("Failed to sync handler state in TrackEndNotifier");
+        }
+        
         None
     }
 }
