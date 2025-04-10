@@ -20,10 +20,8 @@ use tokio::sync::RwLock;
 const EMBED_TIMEOUT: u64 = 3600;
 
 /// Display the current queue.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Music",
-    check = "cmd_check_music",
     slash_command,
     prefix_command,
     aliases("list", "q"),
