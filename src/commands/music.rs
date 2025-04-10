@@ -84,7 +84,7 @@ pub async fn join(ctx: Context<'_>) -> Result<(), crack_types::Error> {
         );
 
         // Initialize the idle timeout info for this guild
-        let _ = ctx.data().bump_activity(guild_id);
+        let () = ctx.data().bump_activity(guild_id);
 
         // Create the channel duration notifier
         let notifier = ChannelDurationNotifier {
@@ -330,7 +330,7 @@ pub async fn show_queue(ctx: Context<'_>) -> Result<(), crack_types::Error> {
             return Ok(());
         }
         let pages = build_queue_pages(&current_queue).await?;
-        let page_refs: Vec<&str> = pages.iter().map(|s| s.as_str()).collect();
+        let page_refs: Vec<&str> = pages.iter().map(String::as_str).collect();
 
         // Use Poise's pagination
         // We'll probably need to customize this eventually.
@@ -343,6 +343,8 @@ pub async fn show_queue(ctx: Context<'_>) -> Result<(), crack_types::Error> {
 }
 
 /// Helper function to build the queue pages
+/// # Errors
+/// - If the write somehow fails.
 pub async fn build_queue_pages(
     current_queue: &[songbird::tracks::TrackHandle],
 ) -> Result<Vec<String>, crack_types::Error> {
@@ -379,13 +381,13 @@ pub async fn build_queue_pages(
         }
 
         // Add page info
-        let _ = write!(
+        let () = write!(
             content,
             "\n**Page {}/{}** · {} tracks total",
             page_idx + 1,
             total_pages,
             current_queue.len()
-        );
+        )?;
 
         pages.push(content);
     }

@@ -37,6 +37,7 @@ impl GuildCache {
     }
 
     /// Build a `GuildCache` with the specified idle timeout
+    #[must_use]
     pub fn with_idle_timeout(&mut self, timeout_minutes: usize) -> Self {
         Self {
             idle_timeout: IdleTimeoutInfo {
