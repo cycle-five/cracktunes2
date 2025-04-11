@@ -7,7 +7,7 @@
 use serenity::all::{ChannelId, GuildId, Http, Token, UserId};
 use std::env;
 use std::sync::Arc;
-use tracing::{error, info};
+use tracing::info;
 
 use cracktunes::test::{run_test_bot, run_test_scenario, TestHandler};
 
