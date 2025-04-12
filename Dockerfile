@@ -32,7 +32,7 @@ COPY . .
 RUN cargo build --release --locked
 
 # Create a smaller runtime image
-FROM debian:stable-slim
+FROM debian:bookworm-slim
 
 # Install runtime dependencies
 RUN apt-get update && \
