@@ -175,7 +175,7 @@ async fn undeafen(ctx: Context<'_>) -> Result<(), crack_types::Error> {
     Ok(())
 }
 
-/// Define commands
+/// Get all the bots commands
 fn get_commands() -> Vec<poise::Command<Data, crack_types::Error>> {
     chain(
         vec![
