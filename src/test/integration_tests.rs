@@ -5,7 +5,10 @@ use crack_types::CrackedError;
 use dashmap::DashMap;
 use poise::serenity_prelude as serenity;
 use serenity::{
-    all::{ChannelId, EventHandler, GatewayIntents, GuildId, Http, Message, Ready, ResumedEvent},
+    all::{
+        ChannelId, EventHandler, GatewayIntents, GenericChannelId, GuildId, Http, Message, Ready,
+        ResumedEvent,
+    },
     async_trait,
     client::Context as SerenityContext,
     Client,
@@ -129,7 +132,7 @@ pub struct TestHandler {
     http: Arc<Http>,
     songbird: Arc<songbird::Songbird>,
     runtime: Arc<tokio::runtime::Runtime>,
-    music_channel_id: Mutex<Option<ChannelId>>,
+    music_channel_id: Mutex<Option<GenericChannelId>>,
     voice_channel_id: Mutex<Option<ChannelId>>,
     target_bot_id: Mutex<Option<serenity::UserId>>,
     test_expectations: DashMap<String, TestExpectation>,
@@ -158,7 +161,7 @@ impl TestHandler {
     }
 
     // Set the music channel ID for text commands and responses
-    pub async fn set_music_channel_id(&self, channel_id: ChannelId) {
+    pub async fn set_music_channel_id(&self, channel_id: GenericChannelId) {
         *self.music_channel_id.lock().await = Some(channel_id);
     }
 
@@ -194,7 +197,7 @@ impl TestHandler {
             .map(|entry| (entry.key().clone(), entry.value().clone()))
             .collect()
     }
-    
+
     // Sync state from another TestHandler instance
     // This is useful for updating a clone with the current state from the original
     pub async fn sync_from(&self, other: &TestHandler) -> Result<(), ()> {
@@ -202,25 +205,25 @@ impl TestHandler {
         if let Some(music_channel_id) = *other.music_channel_id.lock().await {
             *self.music_channel_id.lock().await = Some(music_channel_id);
         }
-        
+
         if let Some(voice_channel_id) = *other.voice_channel_id.lock().await {
             *self.voice_channel_id.lock().await = Some(voice_channel_id);
         }
-        
+
         if let Some(target_bot_id) = *other.target_bot_id.lock().await {
             *self.target_bot_id.lock().await = Some(target_bot_id);
         }
-        
+
         if let Some(audio_analyzer) = other.audio_analyzer.lock().await.clone() {
             *self.audio_analyzer.lock().await = Some(audio_analyzer);
         }
-        
+
         if let Some(guild_id) = *other.guild_id.lock().await {
             *self.guild_id.lock().await = Some(guild_id);
         }
-        
+
         // No need to sync test_expectations as they're shared through DashMap
-        
+
         Ok(())
     }
 
@@ -389,7 +392,7 @@ impl TestHandler {
                 // Create a clone of self to use in the handler
                 let test_handler_clone = Arc::new(self.clone());
                 let source_handler = Arc::new(self.clone());
-                
+
                 // Use the updated TrackEndNotifier with both the cloned and source handlers
                 handler.add_global_event(
                     Event::Track(TrackEvent::End),
@@ -527,7 +530,6 @@ impl TestHandler {
 
         Ok(())
     }
-
 }
 
 // A test structure to handle the bot's responses efficiently
@@ -539,7 +541,7 @@ impl Clone for TestHandler {
             http: self.http.clone(),
             songbird: self.songbird.clone(),
             runtime: self.runtime.clone(),
-            music_channel_id: Mutex::new(None),  // Start with empty values
+            music_channel_id: Mutex::new(None), // Start with empty values
             voice_channel_id: Mutex::new(None),
             target_bot_id: Mutex::new(None),
             test_expectations: self.test_expectations.clone(), // DashMap is already thread-safe
@@ -563,12 +565,12 @@ impl VoiceEventHandler for TrackEndNotifier {
             "Detected track end event from target bot: {}",
             self.target_bot_id
         );
-        
+
         // Sync state from the source handler to ensure this clone has up-to-date data
         if let Err(_) = self.test_handler.sync_from(&self.source_handler).await {
             error!("Failed to sync handler state in TrackEndNotifier");
         }
-        
+
         None
     }
 }
@@ -724,7 +726,7 @@ pub async fn run_test_bot() -> Result<(), Box<dyn std::error::Error>> {
 // Run a specific test scenario
 pub async fn run_test_scenario(
     test_handler: Arc<TestHandler>,
-    channel_id: ChannelId,
+    channel_id: GenericChannelId,
     voice_channel_id: ChannelId,
     guild_id: GuildId,
 ) -> Result<(), String> {

@@ -1,6 +1,6 @@
 use crate::{check_msg, Data};
 use poise::serenity_prelude as serenity;
-use serenity::all::{async_trait, ChannelId, GuildId, Http};
+use serenity::all::{async_trait, GenericChannelId, GuildId, Http};
 use songbird::{Event, EventContext, EventHandler as VoiceEventHandler};
 use std::sync::{
     atomic::{AtomicBool, AtomicUsize},
@@ -9,7 +9,7 @@ use std::sync::{
 
 /// Enhanced track end notifier with queue checking and logging.
 pub struct EnhancedTrackEndNotifier {
-    pub chan_id: ChannelId,
+    pub chan_id: GenericChannelId,
     pub http: Arc<Http>,
     pub guild_id: GuildId,
     pub data: Arc<Data>,
@@ -42,7 +42,7 @@ impl VoiceEventHandler for EnhancedTrackEndNotifier {
 
 /// Enhanced error notifier with idle timeout handling and logging.
 pub struct EnhancedTrackErrorNotifier {
-    pub chan_id: ChannelId,
+    pub chan_id: GenericChannelId,
     pub http: Arc<Http>,
     pub guild_id: serenity::GuildId,
     pub data: Arc<Data>,
@@ -74,7 +74,7 @@ impl VoiceEventHandler for EnhancedTrackErrorNotifier {
 }
 
 pub struct ChannelDurationNotifier {
-    pub chan_id: ChannelId,
+    pub chan_id: GenericChannelId,
     pub count: Arc<AtomicUsize>,
     pub http: Arc<Http>,
     pub guild_id: GuildId,
@@ -109,7 +109,7 @@ impl VoiceEventHandler for ChannelDurationNotifier {
 }
 
 pub struct SongFader {
-    pub chan_id: ChannelId,
+    pub chan_id: GenericChannelId,
     pub http: Arc<Http>,
 }
 
@@ -134,7 +134,7 @@ impl VoiceEventHandler for SongFader {
 }
 
 pub struct SongEndNotifier {
-    pub chan_id: ChannelId,
+    pub chan_id: GenericChannelId,
     pub http: Arc<Http>,
 }
 
