@@ -44,7 +44,7 @@ impl VoiceEventHandler for AudioReceiver {
     }
 }
 
-// Audio analyzer that processes and verifies audio data
+/// Audio analyzer that processes and verifies audio data
 pub struct AudioAnalyzer {
     data_receiver: mpsc::Receiver<Vec<i16>>,
     volume_changes: Mutex<Vec<f32>>,
@@ -60,14 +60,14 @@ impl AudioAnalyzer {
         }
     }
 
-    // Start the audio analysis process
+    /// Start the audio analysis process
     pub async fn start_analysis(&mut self) {
         while let Some(audio_data) = self.data_receiver.recv().await {
             self.analyze_audio_data(&audio_data).await;
         }
     }
 
-    // Basic audio analysis
+    /// Basic audio analysis
     async fn analyze_audio_data(&self, audio_data: &[i16]) {
         // Calculate average volume level
         if !audio_data.is_empty() {
@@ -127,7 +127,7 @@ impl TestExpectation {
     }
 }
 
-// Test bot handler that interacts with the CrackTunes bot
+/// Test bot handler that interacts with the CrackTunes bot
 pub struct TestHandler {
     http: Arc<Http>,
     songbird: Arc<songbird::Songbird>,
@@ -155,27 +155,27 @@ impl TestHandler {
         }
     }
 
-    // Set the target bot ID
+    /// Set the target bot ID
     pub async fn set_target_bot_id(&self, bot_id: serenity::UserId) {
         *self.target_bot_id.lock().await = Some(bot_id);
     }
 
-    // Set the music channel ID for text commands and responses
+    /// Set the music channel ID for text commands and responses
     pub async fn set_music_channel_id(&self, channel_id: GenericChannelId) {
         *self.music_channel_id.lock().await = Some(channel_id);
     }
 
-    // Set the voice channel ID for voice tests
+    /// Set the voice channel ID for voice tests
     pub async fn set_voice_channel_id(&self, channel_id: ChannelId) {
         *self.voice_channel_id.lock().await = Some(channel_id);
     }
 
-    // Set the guild ID
+    /// Set the guild ID
     pub async fn set_guild_id(&self, guild_id: GuildId) {
         *self.guild_id.lock().await = Some(guild_id);
     }
 
-    // Initialize audio analysis
+    /// Initialize audio analysis
     pub async fn init_audio_analysis(&self) -> mpsc::Sender<Vec<i16>> {
         let (tx, rx) = mpsc::channel(100);
         let analyzer = AudioAnalyzer::new(rx);
@@ -183,14 +183,14 @@ impl TestHandler {
         tx
     }
 
-    // Add a test expectation
+    /// Add a test expectation
     pub async fn add_expectation(&self, test_id: &str, command: &str, expected_response: &str) {
         let expectation = TestExpectation::new(command, expected_response);
         self.test_expectations
             .insert(test_id.to_string(), expectation);
     }
 
-    // Get test results
+    /// Get test results
     pub async fn get_test_results(&self) -> Vec<(String, TestExpectation)> {
         let map = self.test_expectations.clone();
         map.iter()
@@ -198,8 +198,8 @@ impl TestHandler {
             .collect()
     }
 
-    // Sync state from another TestHandler instance
-    // This is useful for updating a clone with the current state from the original
+    /// Sync state from another TestHandler instance
+    /// This is useful for updating a clone with the current state from the original
     pub async fn sync_from(&self, other: &TestHandler) -> Result<(), ()> {
         // Clone the values from other's mutexes to update our own
         if let Some(music_channel_id) = *other.music_channel_id.lock().await {
@@ -227,7 +227,7 @@ impl TestHandler {
         Ok(())
     }
 
-    // Send a text command to the music channel
+    /// Send a text command to the music channel
     pub async fn send_text_command(&self, command: &str) -> Result<Message, serenity::Error> {
         if let Some(channel_id) = *self.music_channel_id.lock().await {
             channel_id.say(&self.http, command).await
@@ -236,7 +236,10 @@ impl TestHandler {
         }
     }
 
-    // Send an application (slash) command to the target bot
+    /// Send an application (slash) command to the target bot
+    /// # Errors
+    /// - Returns an error if the command fails to send or if the target bot,
+    ///   music channel, or guild ID is not set.
     pub async fn send_slash_command(
         &self,
         command_name: &str,
@@ -410,7 +413,7 @@ impl TestHandler {
         }
     }
 
-    // Helper method to send a specific CrackTunes command using slash commands
+    /// Helper method to send a specific CrackTunes command using slash commands
     pub async fn send_cracktunes_command(
         &self,
         command_type: &str,
@@ -532,7 +535,7 @@ impl TestHandler {
     }
 }
 
-// A test structure to handle the bot's responses efficiently
+/// A test structure to handle the bot's responses efficiently
 impl Clone for TestHandler {
     fn clone(&self) -> Self {
         // Create new empty mutexes instead of trying to clone the locked values
@@ -551,7 +554,7 @@ impl Clone for TestHandler {
     }
 }
 
-// Track end event handler for monitoring the target bot's activity
+/// Track end event handler for monitoring the target bot's activity
 pub struct TrackEndNotifier {
     pub test_handler: Arc<TestHandler>,
     pub source_handler: Arc<TestHandler>,
@@ -671,7 +674,10 @@ impl TestHandler {
     }
 }
 
-// Main function to run the test bot
+/// Main function to run the test bot
+/// # Errors
+/// - Returns an error if the bot times out while initializing
+///   or if client.start() fails.
 pub async fn run_test_bot() -> Result<(), Box<dyn std::error::Error>> {
     // Get the test bot token from environment
     let token = Token::from_env("TEST_BOT_TOKEN").expect("Expected TEST_BOT_TOKEN in environment");
@@ -723,7 +729,9 @@ pub async fn run_test_bot() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-// Run a specific test scenario
+/// Run a specific test scenario
+/// # Errors
+/// Returns an error if the test scenario fails or if any of the commands fail
 pub async fn run_test_scenario(
     test_handler: Arc<TestHandler>,
     channel_id: GenericChannelId,
