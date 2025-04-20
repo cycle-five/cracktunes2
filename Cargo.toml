@@ -1,7 +1,7 @@
 [package]
 authors = ["Cycle Five <cycle.five@proton.me>"]
 name = "cracktunes"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 publish = true
 license = "MIT"
@@ -9,7 +9,7 @@ description = "New Crack Tunes."
 keywords = ["music", "discord", "bot", "crack", "tunes"]
 categories = ["multimedia::audio"]
 homepage = "https://cracktun.es/"
-rust-version = "1.85.0"
+rust-version = "1.88"
 # The official main repo is sr.ht, this is needed for the CI/CD pipeline.
 # repository = "https://git.sr.ht/~cycle-five/cracktunes"
 repository = "https://github.com/cycle-five/cracktunes"
@@ -17,18 +17,20 @@ repository = "https://github.com/cycle-five/cracktunes"
 
 [features]
 default = ["crack-tracing"]
-crack-tracing = ["tracing", "tracing-subscriber"]
+crack-tracing = ["tracing", "tracing-subscriber", "tracing-appender"]
+test-bot = []
 
 [dependencies]
+crack-types = { tag = "v0.1.1", git = "https://github.com/cycle-five/crack-types" }
+audiopus = "0.3.0-rc.0"
 anyhow = "1.0"
-crack-types = { path = "../crack-types" }
-clap = { version = "4.5", features = ["derive"] }
+clap = { version = "4.5.36", features = ["derive"] }
 dashmap = "6.1.0"
-once_cell = "1.20"
+once_cell = "1.21.2"
 futures = "0.3"
-rand = "0.9.0"
+rand = "0.9.1"
 regex = "1.5"
-reqwest = { version = "0.12.14", default-features = false, features = [
+reqwest = { version = "0.12.15", default-features = false, features = [
     "blocking",
     "json",
     "multipart",
@@ -49,23 +51,53 @@ rspotify = { version = "0.14", default-features = false, features = [
     "client-reqwest",
     "reqwest-rustls-tls",
 ] }
+serde_json = "1.0"
 thiserror = "2.0"
 tracing = { version = "0.1", optional = true }
 tracing-subscriber = { version = "0.3", features = [
     "env-filter",
+    "json",
 ], optional = true }
+tracing-appender = { version = "0.2", optional = true }
 url = ">=2.5.4"
-tokio = { version = "1.44.1", features = ["macros", "rt-multi-thread"] }
-poise = { version = "0.6.1", default-features = true }
+tokio = { version = "1.44.1", features = [
+    "signal",
+    "macros",
+    "rt-multi-thread",
+] }
 
 [dependencies.serenity]
-version = "0.12.3"
+#version = "0.12.4"
+git = "https://github.com/serenity-rs/serenity"
+branch = "next"
+features = ["rustls_backend", "cache", "framework", "voice", "voice_model"]
+
+[dependencies.poise]
+#version = "0.6.1"
+git = "https://github.com/serenity-rs/poise"
+branch = "serenity-next"
 
 [dependencies.songbird]
-version = "0.5.0"
+#version = "0.5"
+git = "https://github.com/serenity-rs/songbird"
+branch = "serenity-next"
 features = [
-  "driver", "gateway", "serenity", "rustls", "receive"
+    "driver",
+    "gateway",
+    "serenity",
+    "rustls",
+    "receive",
+    "builtin-queue",
 ]
+
+[dependencies.symphonia]
+version = "0.5.4"
+features = ["all", "opt-simd"]
 
 [dev-dependencies]
 mockall = "0.13.1"
+
+[[bin]]
+name = "test-bot"
+path = "scripts/test-bot.rs"
+required-features = ["test-bot"]
