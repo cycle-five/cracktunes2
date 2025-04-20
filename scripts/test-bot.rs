@@ -10,6 +10,7 @@ use serenity::all::{ChannelId, GuildId, Http, Token, UserId};
 use songbird::Songbird;
 use std::env;
 use std::sync::Arc;
+use tokio::sync::oneshot;
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -90,12 +91,58 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .event_handler(test_handler.clone())
                 .await?;
 
+            // Create a channel to signal shutdown to the client task
+            let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+
             // Start the client directly in a separate task without Arc for mutable access
             tokio::spawn(async move {
-                if let Err(why) = client.start().await {
-                    eprintln!("Client error: {:?}", why);
+                tokio::select! {
+                    result = client.start() => {
+                        if let Err(why) = result {
+                            eprintln!("Client error: {:?}", why);
+                        }
+                    },
+                    _ = shutdown_rx => {
+                        println!("Received shutdown signal, stopping client...");
+                        // Here we would ideally call client.shutdown() or similar, but since serenity::Client may not have a direct shutdown method,
+                        // we rely on the task ending when the program exits.
+                        let ids = client.shard_manager.shards_instantiated();
+                        for id in ids {
+                            client.shard_manager.shutdown(id, 1000);
+                        }
+                    }
                 }
             });
+
+            // Set up signal handling for graceful shutdown
+            tokio::spawn(async move {
+                #[cfg(unix)]
+                {
+                    use tokio::signal::unix as signal;
+                    let mut sigint = signal::signal(signal::SignalKind::interrupt()).unwrap();
+                    let mut sigterm = signal::signal(signal::SignalKind::terminate()).unwrap();
+                    let mut sighup = signal::signal(signal::SignalKind::hangup()).unwrap();
+
+                    tokio::select! {
+                        _ = sigint.recv() => println!("Received SIGINT, shutting down..."),
+                        _ = sigterm.recv() => println!("Received SIGTERM, shutting down..."),
+                        _ = sighup.recv() => println!("Received SIGHUP, shutting down..."),
+                    };
+                }
+                #[cfg(windows)]
+                {
+                    let mut ctrl_c = tokio::signal::windows::ctrl_c().unwrap();
+                    let mut ctrl_break = tokio::signal::windows::ctrl_break().unwrap();
+
+                    tokio::select! {
+                        _ = ctrl_c.recv() => println!("Received Ctrl+C, shutting down..."),
+                        _ = ctrl_break.recv() => println!("Received Ctrl+Break, shutting down..."),
+                    };
+                }
+                // Send shutdown signal to the client task
+                let _ = shutdown_tx.send(());
+            });
+
             // Run the test scenario
             match run_test_scenario(
                 Arc::new(test_handler),
