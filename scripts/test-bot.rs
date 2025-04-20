@@ -5,16 +5,15 @@
 // the main CrackTunes codebase. The structure and design are complete, but
 // compatibility with the current Discord library versions needs to be resolved.
 use clap::{Parser, Subcommand};
+use poise::serenity_prelude as serenity;
 use serenity::all::{ChannelId, GuildId, Http, Token, UserId};
 use std::env;
 use std::sync::Arc;
 use tracing::info;
 use tracing_subscriber::{
-    fmt::{self, format::FmtSpan},
     layer::SubscriberExt,
-    prelude::*,
+    //prelude::*,
     util::SubscriberInitExt,
-    EnvFilter,
 };
 
 use cracktunes::test::{run_test_bot, run_test_scenario, TestHandler};
@@ -77,6 +76,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // Set up the test bot and run the specified test scenario
             let token = Token::from_env("TEST_BOT_TOKEN")?;
+            let intents = serenity::GatewayIntents::GUILD_VOICE_STATES
+                | serenity::GatewayIntents::GUILD_MESSAGES
+                | serenity::GatewayIntents::MESSAGE_CONTENT;
             let target_bot_id = env::var("TARGET_BOT_ID")?.parse::<u64>()?;
 
             // Create the test handler
@@ -86,9 +88,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             test_handler
                 .set_target_bot_id(UserId::new(target_bot_id))
                 .await;
+            let client = serenity::Client::builder(token, intents)
+                .voice_manager::<Songbird>(songbird)
+                .event_handler(test_handler.clone())
+                .await?;
 
+            match run_client(client).await {
+                Ok(_) => println!("Client started successfully!"),
+                Err(e) => eprintln!("Failed to start client: {}", e),
+            }
             // Run the test scenario
-            match run_test_scenario(Arc::new(test_handler), channel_id, voice_id, guild_id).await {
+            match run_test_scenario(
+                Arc::new(test_handler),
+                channel_id.into(),
+                voice_id,
+                guild_id,
+            )
+            .await
+            {
                 Ok(_) => println!("Test scenario completed successfully!"),
                 Err(e) => eprintln!("Test scenario failed: {}", e),
             }
@@ -98,6 +115,56 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             run_test_bot().await?;
         }
     }
+
+    Ok(())
+}
+
+/// Function which runs in a seperate tokio task that starts the client
+/// and waits for it to finish.
+pub async fn run_client(mut client: serenity::Client) -> Result<(), Box<dyn std::error::Error>> {
+    // Start the client and wait for it to finish
+    // let data2 = client.data.clone();
+    tokio::spawn(async move {
+        // Start the client
+        #[cfg(unix)]
+        {
+            use tokio::signal::unix as signal;
+
+            let [mut s1, mut s2, mut s3] = [
+                signal::signal(signal::SignalKind::hangup()).unwrap(),
+                signal::signal(signal::SignalKind::interrupt()).unwrap(),
+                signal::signal(signal::SignalKind::terminate()).unwrap(),
+            ];
+
+            tokio::select!(
+                v = s1.recv() => v.unwrap(),
+                v = s2.recv() => v.unwrap(),
+                v = s3.recv() => v.unwrap(),
+            );
+        }
+        #[cfg(windows)]
+        {
+            let (mut s1, mut s2) = (
+                tokio::signal::windows::ctrl_c().unwrap(),
+                tokio::signal::windows::ctrl_break().unwrap(),
+            );
+
+            tokio::select!(
+                v = s1.recv() => v.unwrap(),
+                v = s2.recv() => v.unwrap(),
+            );
+        }
+        let ids = client.shard_manager.shards_instantiated();
+        for id in ids {
+            client.shard_manager.shutdown(id, 1000);
+        }
+    });
+
+    tokio::spawn(async move {
+        if let Err(why) = client.start().await {
+            eprintln!("Client error: {:?}", why);
+        }
+    });
 
     Ok(())
 }
