@@ -7,14 +7,11 @@
 use clap::{Parser, Subcommand};
 use poise::serenity_prelude as serenity;
 use serenity::all::{ChannelId, GuildId, Http, Token, UserId};
+use songbird::Songbird;
 use std::env;
 use std::sync::Arc;
 use tracing::info;
-use tracing_subscriber::{
-    layer::SubscriberExt,
-    //prelude::*,
-    util::SubscriberInitExt,
-};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use cracktunes::test::{run_test_bot, run_test_scenario, TestHandler};
 
@@ -82,21 +79,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let target_bot_id = env::var("TARGET_BOT_ID")?.parse::<u64>()?;
 
             // Create the test handler
-            let http = Http::new(token);
+            let http = Http::new(token.clone());
             let songbird = songbird::Songbird::serenity();
             let test_handler = TestHandler::new(Arc::new(http), songbird.clone());
             test_handler
                 .set_target_bot_id(UserId::new(target_bot_id))
                 .await;
-            let client = serenity::Client::builder(token, intents)
+            let mut client = serenity::Client::builder(token, intents)
                 .voice_manager::<Songbird>(songbird)
                 .event_handler(test_handler.clone())
                 .await?;
 
-            match run_client(client).await {
-                Ok(_) => println!("Client started successfully!"),
-                Err(e) => eprintln!("Failed to start client: {}", e),
-            }
+            // Start the client directly in a separate task without Arc for mutable access
+            tokio::spawn(async move {
+                if let Err(why) = client.start().await {
+                    eprintln!("Client error: {:?}", why);
+                }
+            });
             // Run the test scenario
             match run_test_scenario(
                 Arc::new(test_handler),
@@ -115,56 +114,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             run_test_bot().await?;
         }
     }
-
-    Ok(())
-}
-
-/// Function which runs in a seperate tokio task that starts the client
-/// and waits for it to finish.
-pub async fn run_client(mut client: serenity::Client) -> Result<(), Box<dyn std::error::Error>> {
-    // Start the client and wait for it to finish
-    // let data2 = client.data.clone();
-    tokio::spawn(async move {
-        // Start the client
-        #[cfg(unix)]
-        {
-            use tokio::signal::unix as signal;
-
-            let [mut s1, mut s2, mut s3] = [
-                signal::signal(signal::SignalKind::hangup()).unwrap(),
-                signal::signal(signal::SignalKind::interrupt()).unwrap(),
-                signal::signal(signal::SignalKind::terminate()).unwrap(),
-            ];
-
-            tokio::select!(
-                v = s1.recv() => v.unwrap(),
-                v = s2.recv() => v.unwrap(),
-                v = s3.recv() => v.unwrap(),
-            );
-        }
-        #[cfg(windows)]
-        {
-            let (mut s1, mut s2) = (
-                tokio::signal::windows::ctrl_c().unwrap(),
-                tokio::signal::windows::ctrl_break().unwrap(),
-            );
-
-            tokio::select!(
-                v = s1.recv() => v.unwrap(),
-                v = s2.recv() => v.unwrap(),
-            );
-        }
-        let ids = client.shard_manager.shards_instantiated();
-        for id in ids {
-            client.shard_manager.shutdown(id, 1000);
-        }
-    });
-
-    tokio::spawn(async move {
-        if let Err(why) = client.start().await {
-            eprintln!("Client error: {:?}", why);
-        }
-    });
 
     Ok(())
 }
